@@ -1,0 +1,163 @@
+[
+  {
+    "estrategia": "entropia (T=0.5)",
+    "bateria": "realista",
+    "n_jogos": 1500,
+    "media_tentativas": 3.5993333333333335,
+    "media_penalizada": 3.5993333333333335,
+    "taxa_vitoria": 1.0,
+    "distribuicao": {
+      "1": 1,
+      "2": 26,
+      "3": 637,
+      "4": 745,
+      "5": 91
+    },
+    "derrotas": [],
+    "piores_casos": [],
+    "segundos": 14.000975500093773,
+    "segundos_por_jogo": 0.009333983666729183,
+    "temperatura": 0.5,
+    "extras": {}
+  },
+  {
+    "estrategia": "entropia (T=1)",
+    "bateria": "realista",
+    "n_jogos": 1500,
+    "media_tentativas": 3.5806666666666667,
+    "media_penalizada": 3.5806666666666667,
+    "taxa_vitoria": 1.0,
+    "distribuicao": {
+      "1": 1,
+      "2": 24,
+      "3": 664,
+      "4": 725,
+      "5": 86
+    },
+    "derrotas": [],
+    "piores_casos": [],
+    "segundos": 11.997800700017251,
+    "segundos_por_jogo": 0.0079985338000115,
+    "temperatura": 1.0,
+    "extras": {}
+  },
+  {
+    "estrategia": "entropia (T=2)",
+    "bateria": "realista",
+    "n_jogos": 1500,
+    "media_tentativas": 3.6273333333333335,
+    "media_penalizada": 3.6273333333333335,
+    "taxa_vitoria": 1.0,
+    "distribuicao": {
+      "2": 18,
+      "3": 636,
+      "4": 735,
+      "5": 109,
+      "6": 2
+    },
+    "derrotas": [],
+    "piores_casos": [
+      "farda",
+      "pinga"
+    ],
+    "segundos": 13.165037899976596,
+    "segundos_por_jogo": 0.00877669193331773,
+    "temperatura": 2.0,
+    "extras": {}
+  },
+  {
+    "estrategia": "entropia (T=5)",
+    "bateria": "realista",
+    "n_jogos": 1500,
+    "media_tentativas": 3.6306666666666665,
+    "media_penalizada": 3.6306666666666665,
+    "taxa_vitoria": 1.0,
+    "distribuicao": {
+      "2": 12,
+      "3": 646,
+      "4": 727,
+      "5": 114,
+      "6": 1
+    },
+    "derrotas": [],
+    "piores_casos": [
+      "mamar"
+    ],
+    "segundos": 9.913407000014558,
+    "segundos_por_jogo": 0.006608938000009706,
+    "temperatura": 5.0,
+    "extras": {}
+  },
+  {
+    "estrategia": "entropia (T=10)",
+    "bateria": "realista",
+    "n_jogos": 1500,
+    "media_tentativas": 3.648,
+    "media_penalizada": 3.648,
+    "taxa_vitoria": 1.0,
+    "distribuicao": {
+      "2": 13,
+      "3": 634,
+      "4": 724,
+      "5": 126,
+      "6": 3
+    },
+    "derrotas": [],
+    "piores_casos": [
+      "farda",
+      "mamar",
+      "radar"
+    ],
+    "segundos": 9.969015200040303,
+    "segundos_por_jogo": 0.006646010133360202,
+    "temperatura": 10.0,
+    "extras": {}
+  },
+  {
+    "estrategia": "entropia (T=inf)",
+    "bateria": "realista",
+    "n_jogos": 1500,
+    "media_tentativas": 3.8810955243820975,
+    "media_penalizada": 3.8873333333333333,
+    "taxa_vitoria": 0.998,
+    "distribuicao": {
+      "1": 1,
+      "2": 13,
+      "3": 434,
+      "4": 789,
+      "5": 235,
+      "6": 25
+    },
+    "derrotas": [
+      "sanar",
+      "vinda",
+      "xangô"
+    ],
+    "piores_casos": [
+      "bazar",
+      "fixar",
+      "folga",
+      "folha",
+      "pagão",
+      "palha",
+      "panda",
+      "pardo",
+      "pavão",
+      "persa",
+      "pinga",
+      "pingo",
+      "puxar",
+      "relax",
+      "sigma",
+      "sujar",
+      "tango",
+      "tinta",
+      "tinto",
+      "vagar"
+    ],
+    "segundos": 10.94315770000685,
+    "segundos_por_jogo": 0.007295438466671233,
+    "temperatura": Infinity,
+    "extras": {}
+  }
+]

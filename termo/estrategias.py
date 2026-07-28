@@ -1,0 +1,112 @@
+"""Estratégias competidoras do benchmark (seção 5.2 da especificação).
+
+Todas expõem a mesma interface — `escolher(candidatas, rodada) -> índice` — para
+que o simulador não precise saber com qual está lidando.
+
+  1. Aleatória            piso de comparação
+  2. Frequência de letras a heurística que a maioria dos solvers usa
+  3. Mais provável        sempre a candidata de menor ICF
+  4. Entropia             o motor da seção 4
+
+As três primeiras sempre chutam uma candidata, então a regra de endgame não se
+aplica a elas: nunca "queimam" uma tentativa.
+"""
+
+from __future__ import annotations
+
+from abc import ABC, abstractmethod
+
+import numpy as np
+
+from .entropia import Motor
+from .lexico import Lexico
+
+
+class Estrategia(ABC):
+    nome: str = "?"
+
+    @abstractmethod
+    def escolher(self, candidatas: np.ndarray, rodada: int) -> int:
+        """Índice da palavra a jogar nesta rodada."""
+
+    def reiniciar(self) -> None:
+        """Chamado no início de cada jogo."""
+
+
+class Aleatoria(Estrategia):
+    """Chuta qualquer candidata restante. Piso de comparação."""
+
+    nome = "aleatória"
+
+    def __init__(self, semente: int = 0):
+        self.semente = semente
+        self._rng = np.random.default_rng(semente)
+
+    def reiniciar(self) -> None:
+        self._rng = np.random.default_rng(self.semente)
+
+    def escolher(self, candidatas: np.ndarray, rodada: int) -> int:
+        return int(self._rng.choice(candidatas))
+
+
+class FrequenciaDeLetras(Estrategia):
+    """Score = soma das frequências das letras (distintas) entre as candidatas.
+
+    É a abordagem que o artigo do Gabriel Yshay mostrou ser furada, e a que a
+    maioria dos solvers de Termo por aí usa. Serve de régua honesta.
+    """
+
+    nome = "freq. de letras"
+
+    def __init__(self, lexico: Lexico):
+        alfabeto = sorted({letra for palavra in lexico.palavras for letra in palavra})
+        posicao = {letra: i for i, letra in enumerate(alfabeto)}
+        self.contem = np.zeros((len(lexico), len(alfabeto)), dtype=bool)
+        for i, palavra in enumerate(lexico.palavras):
+            for letra in palavra:
+                self.contem[i, posicao[letra]] = True
+
+    def escolher(self, candidatas: np.ndarray, rodada: int) -> int:
+        contem = self.contem[candidatas].astype(np.float64)
+        # Frequência = em quantas candidatas restantes cada letra aparece.
+        frequencia = contem.sum(axis=0)
+        # Letras distintas: uma letra repetida não conta duas vezes.
+        return int(candidatas[np.argmax(contem @ frequencia)])
+
+
+class MaisProvavel(Estrategia):
+    """Chuta sempre a candidata de maior prior (menor ICF)."""
+
+    nome = "mais provável"
+
+    def __init__(self, lexico: Lexico):
+        self.prior = lexico.prior
+
+    def escolher(self, candidatas: np.ndarray, rodada: int) -> int:
+        return int(candidatas[np.argmax(self.prior[candidatas])])
+
+
+class Entropia(Estrategia):
+    """Maximiza a informação esperada, com a regra de endgame da seção 4.5."""
+
+    def __init__(self, motor: Motor):
+        self.motor = motor
+        self.nome = f"entropia (T={motor.lexico.temperatura:g})"
+        self._abertura: int | None = None
+
+    def escolher(self, candidatas: np.ndarray, rodada: int) -> int:
+        if rodada == 1:
+            if self._abertura is None:
+                self._abertura = self.motor.abertura().indice
+            return self._abertura
+        return self.motor.escolher_com_cache(candidatas, rodada).indice
+
+
+def construir_todas(motor: Motor, semente: int = 0) -> list[Estrategia]:
+    """As quatro estratégias da seção 5.2, na ordem da tabela."""
+    return [
+        Aleatoria(semente),
+        FrequenciaDeLetras(motor.lexico),
+        MaisProvavel(motor.lexico),
+        Entropia(motor),
+    ]
