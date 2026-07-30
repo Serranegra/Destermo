@@ -10,8 +10,11 @@ data/icf.txt
 data/lexico.txt
 data/matriz_padroes.npy
 data/matriz_padroes.json
-data/aberturas.json
 CLAUDE.md
+
+# data/aberturas.json FICA versionado: é a conta mais cara do uso diário
+# (partições do léxico inteiro contra si mesmo) e não muda a não ser que o
+# léxico ou o ICF mudem — não faz sentido recalcular a cada checkout.
 
 # O léxico final (termo_lexico_5letras.txt) e os PNGs/JSONs de resultados/ FICAM
 # versionados: são o que o README referencia e o que se quer comparar entre
