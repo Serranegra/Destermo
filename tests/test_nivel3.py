@@ -177,6 +177,29 @@ def test_conjunto_vazio_e_erro(mini_uniforme):
         mini_uniforme.escolher(np.array([], dtype=np.int32))
 
 
+def test_orcamento_grande_nao_estoura_a_chave_do_memo(palavras_mini):
+    """A chave da memoização não pode impor um teto escondido às rodadas.
+
+    `rodadas` vem de `n_max_tentativas`, que é parâmetro do motor — quem montasse
+    um jogo de mais de 255 rodadas levava um "bytes must be in range(0, 256)"
+    vindo de dentro do cache, sem relação nenhuma com o que pediu.
+    """
+    lexico = _mini_lexico(palavras_mini, math.inf)
+    matriz = construir_matriz(palavras_mini, verboso=False)
+    motor3 = MotorNivel3(Motor(lexico, matriz=matriz), beam=4, profundidade=1)
+    candidatas = np.arange(4, dtype=np.int32)
+
+    referencia = motor3.valor(candidatas, rodadas=6)
+    for rodadas in (255, 256, 1000):
+        # Orçamento grande não muda nada: com 4 candidatas 6 rodadas já sobram.
+        assert motor3.valor(candidatas, rodadas=rodadas) == pytest.approx(referencia)
+
+    folgado = MotorNivel3(
+        Motor(lexico, matriz=matriz, n_max_tentativas=300), beam=4, profundidade=1
+    )
+    assert folgado.escolher(candidatas, tentativa=1).palavra in palavras_mini
+
+
 def test_configuracao_invalida_e_erro(mini_uniforme):
     with pytest.raises(ValueError):
         MotorNivel3(mini_uniforme.motor, beam=0)

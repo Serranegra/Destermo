@@ -111,8 +111,8 @@ class MotorNivel3:
         if beam < 1:
             raise ValueError("beam deve ser >= 1")
         # O teto é folgado de propósito: uma partida de Termo tem 6 rodadas, então
-        # nada além de ~6 muda o resultado — o limite só mantém a chave da
-        # memoização em dois bytes.
+        # nada além de ~6 muda o resultado. Vale só para recusar cedo, com uma
+        # mensagem legível, quem passar um número absurdo.
         if not 0 <= profundidade <= 64:
             raise ValueError("profundidade deve estar entre 0 e 64")
         self.motor = motor
@@ -176,7 +176,11 @@ class MotorNivel3:
         Sem este cache, o mesmo conjunto reaparecendo noutra rodada refaz a
         varredura do léxico inteiro — que é 95% do custo da busca.
         """
-        chave = bytes((k & 0xFF, mais_provavel)) + candidatas.astype(np.int32).tobytes()
+        chave = (
+            k.to_bytes(2, "little")
+            + bytes((mais_provavel,))
+            + candidatas.astype(np.int32).tobytes()
+        )
         guardado = self._cache_palpites.get(chave)
         if guardado is not None:
             return guardado
@@ -258,7 +262,14 @@ class MotorNivel3:
             perde = 1.0 if rodadas >= 2 else PENALIDADE_DERROTA
             return 1.0 + perde * float(pesos.min()) / soma
 
-        chave = bytes((rodadas, restante)) + candidatas.astype(np.int32).tobytes()
+        # Dois bytes por campo, não um: `rodadas` vem de `n_max_tentativas`, que é
+        # parâmetro do motor, e um `Motor(n_max_tentativas=300)` derrubava a busca
+        # com "bytes must be in range(0, 256)" — erro que não diz nada a quem o vê.
+        chave = (
+            rodadas.to_bytes(2, "little")
+            + restante.to_bytes(2, "little")
+            + candidatas.astype(np.int32).tobytes()
+        )
         guardado = self._memo.get(chave)
         if guardado is not None:
             return guardado
