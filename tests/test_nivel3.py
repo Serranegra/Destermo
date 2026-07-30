@@ -8,6 +8,7 @@ o mesmo número que uma enumeração exaustiva escrita à parte, em Python puro.
 import math
 import random
 import sys
+import textwrap
 from collections import defaultdict
 from pathlib import Path
 
@@ -288,6 +289,68 @@ def test_uma_e_duas_candidatas_seguem_o_nivel_2(motor):
 
 
 # ---------------------------------------------------------------------- cache
+
+
+def test_assinatura_reage_a_mudanca_de_regra(monkeypatch):
+    """Mexer na busca tem que invalidar a abertura em cache (§0.3).
+
+    É o acidente que já aconteceu: a primeira abertura foi calculada sob o
+    objetivo sem limite de rodadas e continuou parecendo válida depois. Sem isto,
+    trocar a regra do beam ou a fórmula do custo deixa um JSON versionado que
+    ninguém tem como saber que está mentindo.
+    """
+    original = nivel3.assinatura_busca()
+    assert original == nivel3.assinatura_busca()  # estável entre chamadas
+
+    def _custo_diferente(self, palpite, candidatas, rodadas, restante, limite=math.inf):
+        return 42.0
+
+    nivel3.assinatura_busca.cache_clear()
+    monkeypatch.setattr(nivel3.MotorNivel3, "_custo", _custo_diferente)
+    assert nivel3.assinatura_busca() != original
+
+    monkeypatch.undo()
+    nivel3.assinatura_busca.cache_clear()
+    assert nivel3.assinatura_busca() == original
+
+
+def _normalizada(codigo: str) -> str:
+    """O mesmo pré-processamento que a assinatura aplica antes de hashear."""
+    import ast
+
+    return ast.unparse(nivel3._sem_docstring(ast.parse(textwrap.dedent(codigo))))
+
+
+def test_assinatura_ignora_o_que_nao_e_regra():
+    """Reescrever explicação, comentário ou formatação não custa 9 min."""
+    base = '''
+        def custo(a, b):
+            """Explicação original."""
+            # um comentário
+            total = a + b
+            return total
+    '''
+    so_texto = '''
+        def custo(a, b):
+            """Outra explicação, completamente diferente, com mais linhas.
+
+            E um segundo parágrafo.
+            """
+            total = a  +  b
+            return total
+    '''
+    outra_regra = '''
+        def custo(a, b):
+            """Explicação original."""
+            total = a - b
+            return total
+    '''
+    assert _normalizada(base) == _normalizada(so_texto)
+    assert _normalizada(base) != _normalizada(outra_regra)
+
+
+def test_assinatura_entra_na_chave_do_cache(motor):
+    assert f"B={nivel3.assinatura_busca()}" in MotorNivel3(motor)._chave_cache()
 
 
 def test_abertura_vai_e_volta_do_cache(palavras_mini, tmp_path, monkeypatch):

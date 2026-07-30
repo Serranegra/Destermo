@@ -65,8 +65,13 @@ níveis — e é de graça.
 
 from __future__ import annotations
 
+import ast
+import functools
+import hashlib
+import inspect
 import json
 import math
+import textwrap
 
 import numpy as np
 
@@ -91,6 +96,65 @@ PROFUNDIDADE = 1
 # 7 é "a partida inteira jogada em vão", e a essa altura qualquer valor acima de
 # ~2 já basta para a busca nunca escolher perder.
 PENALIDADE_DERROTA = 7.0
+
+
+def _sem_docstring(arvore: ast.AST) -> ast.AST:
+    """Tira as docstrings da árvore — texto não muda o que a busca decide."""
+    for no in ast.walk(arvore):
+        corpo = getattr(no, "body", None)
+        if not isinstance(corpo, list) or not corpo:
+            continue
+        primeiro = corpo[0]
+        if (
+            isinstance(primeiro, ast.Expr)
+            and isinstance(primeiro.value, ast.Constant)
+            and isinstance(primeiro.value.value, str)
+        ):
+            no.body = corpo[1:] or [ast.Pass()]
+    return arvore
+
+
+@functools.cache
+def assinatura_busca() -> str:
+    """Hash do código que decide o valor da busca (§0.3: cache derivado obsoleto).
+
+    A abertura do nível 3 custa ~9 min e vai versionada em disco. O risco é o da
+    §0.3 da especificação — um cache derivado sobreviver a uma mudança que o
+    invalida —, e aconteceu de verdade durante o desenvolvimento: a primeira
+    abertura foi calculada sob o objetivo sem limite de rodadas e continuou
+    parecendo válida depois. A matriz não tem esse problema porque a assinatura
+    dela é sobre a entrada; aqui a "entrada" inclui o algoritmo, então é ele que
+    entra no hash.
+
+    Comparar por AST, sem docstrings, é o que separa "mudei a regra" de "mudei o
+    texto": reformatar, quebrar linha diferente ou reescrever a explicação não
+    custa 9 min de recálculo; mexer na regra do beam, na poda ou na fórmula do
+    custo, sim. Renomear uma variável TAMBÉM invalida — `ast.unparse` preserva
+    identificadores —, o que é falso positivo, mas do lado seguro: recalcular à
+    toa custa tempo, publicar uma abertura errada custa credibilidade.
+
+    O que fica de fora, de propósito: `Motor.entropias` e `_entropias_poucas`. Elas
+    têm oráculo — os testes comparam com uma referência escrita à mão e com o
+    outro caminho —, então uma mudança de valor lá é ruidosa, não silenciosa. E
+    são justamente as funções que se mexe por desempenho: pôr no hash cobraria os
+    9 min a cada otimização que não muda resultado nenhum. Hash para o que não tem
+    oráculo, teste para o que tem.
+    """
+    alvos = (
+        MotorNivel3._particionar,
+        MotorNivel3._palpites,
+        MotorNivel3._pesos,
+        MotorNivel3._custo,
+        MotorNivel3._valor,
+        MotorNivel3.escolher,
+        Motor.ordenar_por_entropia,
+        Motor.melhor_candidata,
+    )
+    partes = [
+        ast.unparse(_sem_docstring(ast.parse(textwrap.dedent(inspect.getsource(f)))))
+        for f in alvos
+    ]
+    return hashlib.sha256("\n".join(partes).encode("utf-8")).hexdigest()[:12]
 
 
 class MotorNivel3:
@@ -412,11 +476,13 @@ class MotorNivel3:
 
         Além da configuração da busca, a penalidade de derrota e o nº de rodadas
         definem o objetivo: mexer neles muda o valor de toda a árvore, e uma
-        abertura calculada sob o objetivo antigo não vale mais nada.
+        abertura calculada sob o objetivo antigo não vale mais nada. O `B` fecha o
+        resto — é a assinatura do próprio algoritmo (ver `assinatura_busca`).
         """
         return (
             f"T={self.lexico.temperatura};K={self.beam};P={self.profundidade}"
             f";D={PENALIDADE_DERROTA:g};R={self.motor.n_max_tentativas}"
+            f";B={assinatura_busca()}"
         )
 
     def _abertura_guardada(self) -> tuple[dict, dict | None]:
