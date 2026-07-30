@@ -8,13 +8,17 @@ venv/
 # Windows (.venv\Scripts\), então não serve para quem clona em Linux ou macOS.
 .vscode/
 
+# Instruções locais para agentes de código: convenção de quem mexe no projeto,
+# não parte dele. Nada aqui dentro é necessário para clonar, rodar ou entender o
+# solver — isso está no README.
+CLAUDE.md
+
 # Dados derivados — todos se regeneram sozinhos na primeira execução.
 # As fontes vêm de github.com/fserb/pt-br; a matriz leva ~4 s para reconstruir.
 data/icf.txt
 data/lexico.txt
 data/matriz_padroes.npy
 data/matriz_padroes.json
-CLAUDE.md
 
 # data/aberturas.json FICA versionado: é a conta mais cara do uso diário
 # (partições do léxico inteiro contra si mesmo) e não muda a não ser que o
