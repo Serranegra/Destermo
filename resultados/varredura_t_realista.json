@@ -15,8 +15,8 @@
     },
     "derrotas": [],
     "piores_casos": [],
-    "segundos": 14.000975500093773,
-    "segundos_por_jogo": 0.009333983666729183,
+    "segundos": 4.757337399991229,
+    "segundos_por_jogo": 0.0031715582666608194,
     "temperatura": 0.5,
     "extras": {}
   },
@@ -36,8 +36,8 @@
     },
     "derrotas": [],
     "piores_casos": [],
-    "segundos": 11.997800700017251,
-    "segundos_por_jogo": 0.0079985338000115,
+    "segundos": 4.781209200038575,
+    "segundos_por_jogo": 0.0031874728000257165,
     "temperatura": 1.0,
     "extras": {}
   },
@@ -60,8 +60,8 @@
       "farda",
       "pinga"
     ],
-    "segundos": 13.165037899976596,
-    "segundos_por_jogo": 0.00877669193331773,
+    "segundos": 5.123484099982306,
+    "segundos_por_jogo": 0.003415656066654871,
     "temperatura": 2.0,
     "extras": {}
   },
@@ -83,8 +83,8 @@
     "piores_casos": [
       "mamar"
     ],
-    "segundos": 9.913407000014558,
-    "segundos_por_jogo": 0.006608938000009706,
+    "segundos": 4.786112000001594,
+    "segundos_por_jogo": 0.003190741333334396,
     "temperatura": 5.0,
     "extras": {}
   },
@@ -108,8 +108,8 @@
       "mamar",
       "radar"
     ],
-    "segundos": 9.969015200040303,
-    "segundos_por_jogo": 0.006646010133360202,
+    "segundos": 4.427843300043605,
+    "segundos_por_jogo": 0.0029518955333624037,
     "temperatura": 10.0,
     "extras": {}
   },
@@ -155,8 +155,8 @@
       "tinto",
       "vagar"
     ],
-    "segundos": 10.94315770000685,
-    "segundos_por_jogo": 0.007295438466671233,
+    "segundos": 4.2897148000774905,
+    "segundos_por_jogo": 0.002859809866718327,
     "temperatura": Infinity,
     "extras": {}
   }
