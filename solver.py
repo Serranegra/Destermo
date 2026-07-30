@@ -4,10 +4,14 @@
 Esta camada só faz entrada/saída. Toda a lógica vive em `termo/` — trocar a CLI
 por um bot, uma API ou uma página web não exige mexer no motor (seção 7.4).
 
-    python solver.py            # T = 1.0
+    python solver.py            # nível 3, T = 1.0
+    python solver.py --nivel 2  # só entropia: milissegundos por jogada
     python solver.py --t 5      # outra temperatura do prior
     python solver.py --t inf    # entropia pura, sem prior de frequência
-    python solver.py --nivel 3  # minimiza tentativas esperadas (mais lento)
+
+O padrão é o nível 3 (§4.1): ele minimiza o número esperado de tentativas em vez
+de maximizar bits, o que vale 0,54 tentativa na bateria realista. A abertura dele
+vem em cache; cada jogada custa décimos de segundo.
 
 Os dois níveis expõem a mesma interface (`abertura`, `escolher`), então daqui para
 baixo nada sabe qual dos dois está respondendo.
@@ -171,8 +175,12 @@ def jogar(motor: Cerebro) -> None:
     historico: list[np.ndarray] = []
 
     if isinstance(motor, MotorNivel3) and not motor.abertura_em_cache():
-        print("\nAbertura do nível 3 fora do cache: são minutos de busca na árvore"
-              "\n(uma vez só — o resultado vai para data/aberturas_nivel3.json).")
+        # Só a configuração padrão vem com a abertura versionada. Como o nível 3
+        # agora é o padrão, quem mexe em --t/--beam/--profundidade cai aqui sem
+        # ter pedido nada de exótico — então a saída de emergência vem junto.
+        print("\nAbertura do nível 3 fora do cache para esta configuração:"
+              "\nsão ~9 min de busca na árvore, uma vez só (o resultado vai para"
+              "\ndata/aberturas_nivel3.json). Para começar já, use --nivel 2.")
     else:
         print("\nCalculando a melhor abertura...")
     print(formatar_sugestao(motor.abertura(), "melhor abertura"))
@@ -227,8 +235,8 @@ def main() -> None:
         help="temperatura do prior de frequência ('inf' = entropia pura)",
     )
     analisador.add_argument(
-        "--nivel", type=int, choices=(2, 3), default=2,
-        help="2 = entropia (padrão); 3 = minimiza tentativas esperadas",
+        "--nivel", type=int, choices=(2, 3), default=3,
+        help="3 = minimiza tentativas esperadas (padrão); 2 = entropia pura",
     )
     analisador.add_argument(
         "--beam", type=int, default=BEAM,

@@ -34,15 +34,16 @@ python solver.py
 ```
 
 ```
-Melhor abertura: tarso   (5.97 bits)
+  melhor abertura: tosar   (5.91 bits, E=3.01 tentativas, é candidata)
 
 [1] tentativa > tarso
 [?] feedback de 'tarso' > GBGBG
 
   candidatas restantes: 18
-  sugestão: voncê   (2.50 bits, não é candidata)
-  motivo: maior entropia entre as 6046 palavras do léxico (18 candidatas restantes)
-  alternativas: cnute, conde, coiné
+  sugestão: voncê   (2.50 bits, E=2.01 tentativas, não é candidata)
+  motivo: menor nº esperado de tentativas (E=2.006) entre os 11 melhores palpites
+          por entropia (18 candidatas, 5 rodadas, profundidade 1)
+  alternativas: conde, cnute, coiné
 ```
 
 Digite as tentativas **sem acento** — é o que o jogador faz no term.ooo, que
@@ -52,6 +53,17 @@ sugestões saem na forma acentuada, que é a que aparece na tela do jogo.
 O feedback aceita `G`/`Y`/`B` (maiúsculo ou minúsculo), `2`/`1`/`0` ou os emojis
 🟩🟨⬛. Comandos: `voltar` desfaz a última rodada, `listar` mostra as candidatas,
 `?` mostra a ajuda, `sair` encerra.
+
+O padrão é o **nível 3** ([`termo/nivel3.py`](termo/nivel3.py)): ele minimiza o
+número **esperado de tentativas** em vez de maximizar bits por jogada, o que vale
+0,54 tentativa na bateria realista. A abertura dele vem em cache no repositório e
+cada jogada custa décimos de segundo.
+
+Para o nível 2 puro — entropia, milissegundos por jogada:
+
+```bash
+python solver.py --nivel 2
+```
 
 Outras temperaturas do prior:
 
@@ -65,27 +77,13 @@ python solver.py --t inf
 
 `--t inf` desliga o prior de frequência e recupera a entropia pura.
 
-O nível 3 do algoritmo — que minimiza o número **esperado de tentativas** em vez
-de maximizar bits por jogada — está em [`termo/nivel3.py`](termo/nivel3.py) e
-entra por uma flag. O nível 2 continua sendo o padrão:
-
-```bash
-python solver.py --nivel 3
-```
-
-```
-  melhor abertura: tosar   (5.91 bits, E=3.01 tentativas, é candidata)
-  motivo: melhor abertura do nível 3 (em cache)
-  alternativas: tarso*, sertã*, terso*, tória*, tirão*   (* = também é candidata)
-```
-
-Ele responde em menos de um segundo no meio do jogo, mas a **abertura** é uma
-busca a partir das 6.046 candidatas e levou **8,8 min** para calcular aqui — por
-isso ela vem versionada em `data/aberturas_nivel3.json`, como a do nível 2. O
-tamanho da busca é ajustável por `--beam` (palpites testados por nó) e
-`--profundidade` (níveis de busca antes de cair na política gulosa); cada
-configuração tem a sua própria abertura em cache, e uma configuração nova paga os
-8,8 min de novo.
+**Atenção ao combinar `--t` com o nível 3.** Só a configuração padrão
+(`T=1, beam=10, profundidade=1`) vem com a abertura pronta em
+`data/aberturas_nivel3.json`; qualquer outra é uma busca a partir das 6.046
+candidatas e leva ~9 min, uma vez, antes da primeira sugestão. A CLI avisa e
+sugere `--nivel 2` para começar na hora. O tamanho da busca é ajustável por
+`--beam` (palpites testados por nó) e `--profundidade` (níveis de busca antes de
+cair na política gulosa) — cada combinação tem a sua própria abertura em cache.
 
 Na primeira execução o programa baixa o léxico do repositório
 [`fserb/pt-br`](https://github.com/fserb/pt-br) e constrói a matriz de padrões
@@ -437,9 +435,12 @@ Dueto e Quarteto; curadoria manual adicional do léxico; interface web/bot/API;
 separação formal entre lista de respostas e lista de tentativas válidas.
 
 O Nível 3 também estava nesta lista (§12) e saiu dela: está implementado em
-[`termo/nivel3.py`](termo/nivel3.py), atrás da flag `--nivel 3`. O nível 2 segue
-sendo o padrão — o motivo da especificação (custo computacional) não desapareceu,
-só ficou mensurável.
+[`termo/nivel3.py`](termo/nivel3.py) e **é o padrão da CLI**. O motivo da
+especificação (custo computacional) não desapareceu — ele ficou mensurável, e
+medido dá décimos de segundo por jogada com a abertura em cache, o que é barato
+demais para justificar abrir mão de 0,54 tentativa. No benchmark o padrão
+continua sendo o nível 2: lá são 1.500 partidas por estratégia, e aí os 38× de
+CPU pesam.
 
 ## Marca
 
