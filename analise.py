@@ -27,27 +27,45 @@ import matplotlib.pyplot as plt  # noqa: E402
 
 DIR_RESULTADOS = Path(__file__).resolve().parent / "resultados"
 
-# Paleta categórica de referência da skill de dataviz, slots 1-4, usada sem
-# alteração. Passa os limiares de CVD na lista de pares adjacentes (barras
-# agrupadas), que é o caso aqui.
+# Paleta da marca (brand/README.md), uma rampa por matiz. Duas decisões que não
+# são estéticas:
+#
+# 1. O verde é exclusivo da série de entropia. No vocabulário do Termo ele
+#    significa "acerto", então só a estratégia vencedora o usa — e isso resolve
+#    de quebra o problema de encaixar 4 séries categóricas em 3 matizes, que não
+#    tem solução com dois verdes (o verde da marca precisa escurecer para ter
+#    contraste sobre o osso, e aí os dois verdes colidem).
+# 2. O dourado fica no slot 0, não-adjacente ao verde: dourado ao lado de verde
+#    é justamente o par que colapsa sob deuteranopia.
+#
+# Verificado por simulação de CVD (deutan/protan/tritan): todo par de séries,
+# adjacente ou não, fica acima de 20 de dE76, e cada série tem ao menos 3:1 de
+# contraste contra a superfície. A paleta de referência anterior passava nos
+# pares adjacentes mas colapsava em 5,7 no par laranja/dourado.
+#
+# A ordem das séries segue a dos JSONs do benchmark: aleatória, freq. de letras,
+# mais provável, entropia.
 TEMAS = {
     "claro": {
-        "series": ["#2a78d6", "#eb6834", "#1baf7a", "#eda100"],
-        "superficie": "#fcfcfb",
-        "tinta": "#0b0b0b",
-        "tinta2": "#52514e",
-        "apagada": "#898781",
-        "grade": "#e1e0d9",
-        "eixo": "#c3c2b7",
+        # Passos escuros das rampas — o osso é claro demais para os hex nominais.
+        "series": ["#96702C", "#8B767D", "#4A3E43", "#2D7D72"],
+        "superficie": "#F5EFE9",  # osso
+        "tinta": "#221C1E",  # ardósia
+        "tinta2": "#5C4A50",
+        "apagada": "#6E5C62",  # xisto
+        "grade": "#E5DCD3",
+        "eixo": "#D2C6BB",
+        "destaque": "#2D7D72",
     },
     "escuro": {
-        "series": ["#3987e5", "#d95926", "#199e70", "#c98500"],
-        "superficie": "#1a1a19",
-        "tinta": "#ffffff",
-        "tinta2": "#c3c2b7",
-        "apagada": "#898781",
-        "grade": "#2c2c2a",
-        "eixo": "#383835",
+        "series": ["#D3AD69", "#CFC2C7", "#96818A", "#3AA394"],
+        "superficie": "#221C1E",  # ardósia
+        "tinta": "#F5EFE9",  # osso
+        "tinta2": "#A89AA0",
+        "apagada": "#9A888E",  # xisto clareado: 4,5:1 sobre a ardósia
+        "grade": "#35292D",
+        "eixo": "#4A3B40",
+        "destaque": "#3AA394",  # verde
     },
 }
 
@@ -161,7 +179,7 @@ def grafico_temperatura(resultados: list[dict], modo: str) -> Path:
         (cima, medias, "Tentativas médias (derrota conta como 7)", ""),
         (baixo, vitorias, "Taxa de vitória em 6 tentativas", "%"),
     ):
-        eixos.plot(posicoes, valores, color=tema["series"][0], linewidth=2.0,
+        eixos.plot(posicoes, valores, color=tema["destaque"], linewidth=2.0,
                    marker="o", markersize=8, markeredgewidth=2,
                    markeredgecolor=tema["superficie"], zorder=3)
         eixos.set_title(titulo, color=tema["tinta"], fontsize=11, loc="left", pad=10)

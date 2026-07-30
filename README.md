@@ -1,3 +1,9 @@
+<p align="center">
+  <img src="brand/og-banner.svg" alt="Destermo" width="720">
+</p>
+
+<p align="center"><em>O palpite ótimo do Termo, calculado em bits.</em></p>
+
 # Destermo
 
 Solver de [Termo](https://term.ooo) baseado em entropia de Shannon, com prior de
@@ -298,3 +304,32 @@ silenciosamente errados.
 Dueto e Quarteto; Nível 3 do algoritmo (minimização direta de tentativas
 esperadas); curadoria manual adicional do léxico; interface web/bot/API;
 separação formal entre lista de respostas e lista de tentativas válidas.
+
+## Marca
+
+Os ativos de marca — símbolo, lockup, favicons, ícones de app e banner Open
+Graph — ficam em [`brand/`](brand/). A tabela de qual arquivo usar quando, a
+paleta e o tamanho mínimo do símbolo estão em
+[brand/README.md](brand/README.md).
+
+A paleta é a mesma em qualquer saída colorida (CLI, gráficos, web):
+
+| | hex | papel |
+|---|---|---|
+| verde | `#3AA394` | marca, acerto |
+| dourado | `#D3AD69` | letra fora de lugar |
+| xisto | `#6E5C62` | letra ausente, texto terciário |
+| ardósia | `#221C1E` | fundo escuro |
+| osso | `#F5EFE9` | texto sobre escuro |
+
+Os gráficos de [analise.py](analise.py) derivam suas séries dessas cinco cores.
+
+Não edite os arquivos de `brand/` à mão: os PNGs e o `.ico` são gerados a partir
+dos SVGs por `brand/build.sh` (requer `cairosvg` e `imagemagick`).
+
+Quando existir um front-end, copie para a raiz do diretório público
+`favicon.ico`, `favicon.svg`, `apple-touch-icon.png`, `icon-192.png`,
+`icon-512.png`, `manifest.webmanifest` e `og-banner.png`, e cole o conteúdo de
+[brand/head-snippet.html](brand/head-snippet.html) no `<head>`.
+
+Estes ativos **não** estão sob a licença MIT do repositório.
