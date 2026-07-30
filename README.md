@@ -332,3 +332,10 @@ Quando existir um front-end, copie para a raiz do diretório público
 [brand/head-snippet.html](brand/head-snippet.html) no `<head>`.
 
 Estes ativos **não** estão sob a licença MIT do repositório.
+
+## Fonte dos dados
+
+O léxico de palavras e as pontuações ICF foram derivados do repositório
+[fserb/pt-br](https://github.com/fserb/pt-br), licenciado sob
+[MIT](https://github.com/fserb/pt-br/blob/master/LICENSE)
+(© 2021 Fernando Serboncini).
