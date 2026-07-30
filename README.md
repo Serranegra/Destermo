@@ -1,10 +1,9 @@
 <p align="center">
-  <img src="brand/og-banner.svg" alt="Destermo" width="720">
+  <img src="brand/destermo-icon.svg" width="140" alt="destermo logo">
 </p>
 
-<p align="center"><em>O palpite ótimo do Termo, calculado em bits.</em></p>
-
-# Destermo
+<h1 align="center">Destermo</h1>
+<p align="center"><i>O palpite ótimo do Termo.</i></p>
 
 Solver de [Termo](https://term.ooo) baseado em entropia de Shannon, com prior de
 frequência de uso. Implementa a [especificação v1.1](docs/ESPECIFICACAO_v1.1.md):
