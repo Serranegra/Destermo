@@ -14,8 +14,8 @@
     },
     "derrotas": [],
     "piores_casos": [],
-    "segundos": 2.641694199992344,
-    "segundos_por_jogo": 0.008805647333307813,
+    "segundos": 3.086560899973847,
+    "segundos_por_jogo": 0.010288536333246157,
     "temperatura": 1.0,
     "extras": {}
   },
@@ -34,8 +34,8 @@
     },
     "derrotas": [],
     "piores_casos": [],
-    "segundos": 100.28916849999223,
-    "segundos_por_jogo": 0.33429722833330744,
+    "segundos": 144.2811305000214,
+    "segundos_por_jogo": 0.480937101666738,
     "temperatura": 1.0,
     "extras": {
       "beam": 10,

@@ -88,8 +88,8 @@
       "ácopo",
       "acuar"
     ],
-    "segundos": 0.9514890999998897,
-    "segundos_por_jogo": 0.00015737497519019016,
+    "segundos": 1.0165382999693975,
+    "segundos_por_jogo": 0.00016813402248914945,
     "temperatura": 1.0,
     "extras": {}
   },
@@ -182,8 +182,8 @@
       "álamo",
       "alufá"
     ],
-    "segundos": 5.576777399983257,
-    "segundos_por_jogo": 0.0009223912338708662,
+    "segundos": 8.082189799984917,
+    "segundos_por_jogo": 0.0013367829639406082,
     "temperatura": 1.0,
     "extras": {}
   },
@@ -276,8 +276,8 @@
       "ágaro",
       "ágate"
     ],
-    "segundos": 0.5549407000653446,
-    "segundos_por_jogo": 9.17864207848734e-05,
+    "segundos": 0.7100150999613106,
+    "segundos_por_jogo": 0.00011743551107530774,
     "temperatura": 1.0,
     "extras": {}
   },
@@ -341,8 +341,8 @@
       "bobar",
       "bocué"
     ],
-    "segundos": 5.741831799969077,
-    "segundos_por_jogo": 0.000949691002310466,
+    "segundos": 8.293173799989745,
+    "segundos_por_jogo": 0.0013716794244111388,
     "temperatura": 1.0,
     "extras": {}
   }
