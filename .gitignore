@@ -4,6 +4,10 @@ __pycache__/
 .venv/
 venv/
 
+# Configuração de editor: o settings.json aponta o interpretador com caminho de
+# Windows (.venv\Scripts\), então não serve para quem clona em Linux ou macOS.
+.vscode/
+
 # Dados derivados — todos se regeneram sozinhos na primeira execução.
 # As fontes vêm de github.com/fserb/pt-br; a matriz leva ~4 s para reconstruir.
 data/icf.txt
