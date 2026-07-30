@@ -31,6 +31,12 @@ LIMIAR_ENDGAME = 3
 # Entropias que diferem menos que isso são consideradas empate (seção 4.5).
 EPSILON_EMPATE = 1e-9
 
+# Até quantas candidatas vale calcular a entropia por agrupamento par a par em vez
+# de pelos 243 baldes. O equilíbrio teórico é m² ≈ 243 (m ≈ 16), e medido dá 10,7x
+# em m=4, 5,1x em m=8 e só 1,2x em m=16 — o limiar fica em 12 para ficar dentro da
+# faixa em que o ganho é grande, sem depender de a máquina bater igual à medição.
+LIMIAR_POUCAS = 12
+
 N_MAX_TENTATIVAS = 6
 
 
@@ -40,6 +46,10 @@ class Sugestao:
 
     `palavra` e as alternativas vêm na forma ACENTUADA — é o que o jogador vê na
     tela do jogo (§7.2). O motor por dentro só manipula índices.
+
+    `valor_esperado` só é preenchido pelo nível 3 (`termo/nivel3.py`), que escolhe
+    por E[nº de tentativas] em vez de por bits; nele o float das alternativas
+    também é um valor esperado, não uma entropia.
     """
 
     indice: int
@@ -48,6 +58,7 @@ class Sugestao:
     motivo: str
     e_candidata: bool
     alternativas: list[tuple[str, float, bool]] = field(default_factory=list)
+    valor_esperado: float | None = None
 
 
 class Motor:
@@ -102,10 +113,17 @@ class Motor:
         soma = pesos.sum()
         pesos = pesos / soma if soma > 0 else np.full(m, 1.0 / m)
 
+        if m <= LIMIAR_POUCAS:
+            return self._entropias_poucas(candidatas, pesos)
+
         entropias = np.empty(n, dtype=np.float64)
         # Bloco escolhido para manter os temporários na casa de dezenas de MB.
         bloco = max(1, min(n, 2_000_000 // m))
         deslocamento = np.arange(bloco, dtype=np.int32) * N_PADROES
+        # Alocado uma vez por chamada, não por bloco. Reaproveitar entre blocos é
+        # seguro porque só se escreve onde baldes > 0, e nas outras posições o
+        # produto é 0 · (lixo finito) = 0 — o log nunca produz inf/nan aqui.
+        logs = np.zeros((bloco, N_PADROES), dtype=np.float64)
 
         for i0 in range(0, n, bloco):
             i1 = min(i0 + bloco, n)
@@ -119,18 +137,47 @@ class Motor:
             ).reshape(b, N_PADROES)
 
             # Padrões com p = 0 não contribuem (e log(0) explode).
-            logs = np.log2(baldes, out=np.zeros_like(baldes), where=baldes > 0)
-            entropias[i0:i1] = -(baldes * logs).sum(axis=1)
+            vista = logs[:b]
+            np.log2(baldes, out=vista, where=baldes > 0)
+            entropias[i0:i1] = -(baldes * vista).sum(axis=1)
 
         return entropias
 
+    def _entropias_poucas(
+        self, candidatas: np.ndarray, pesos: np.ndarray
+    ) -> np.ndarray:
+        """Mesma entropia, por agrupamento par a par em vez dos 243 baldes.
+
+        Com poucas candidatas o caminho geral é quase todo desperdício: ele monta
+        uma tabela (6.046 x 243) para preencher no máximo `m` colunas por linha —
+        11 MB alocados e zerados para processar algumas dezenas de milhares de
+        células úteis. Aqui a conta é reescrita por elemento:
+
+            H = -Σ_padrão P·log₂P = -Σ_c w_c · log₂(massa do grupo de c)
+
+        (cada grupo aparece uma vez por candidata que o compõe, e Σ_{c∈g} w_c = P_g).
+        Custa n·m² em vez de n·243, sem tabela intermediária. Abaixo de
+        `LIMIAR_POUCAS` isso é uma ordem de grandeza — e é justamente onde a busca
+        do nível 3 passa a maior parte do tempo: 87% das varreduras dela são em
+        conjuntos de até 8 candidatas.
+        """
+        sub = self.matriz[:, candidatas]  # (n, m) uint8
+        massa = np.zeros(sub.shape, dtype=np.float64)
+        for j in range(len(candidatas)):
+            # Candidatas que caem no mesmo padrão que a j-ésima, linha a linha.
+            massa += pesos[j] * (sub == sub[:, j : j + 1])
+        # Prior degenerado pode zerar um grupo inteiro; lá w_c também é 0, então o
+        # termo é 0 — trocar a massa por 1 mantém log₂ = 0 e evita 0·(-inf) = nan.
+        segura = np.where(massa > 0, massa, 1.0)
+        return -(pesos * np.log2(segura)).sum(axis=1)
+
     # --------------------------------------------------------------- escolha
 
-    def _melhor_candidata(self, candidatas: np.ndarray) -> int:
+    def melhor_candidata(self, candidatas: np.ndarray) -> int:
         """Candidata de maior prior (menor ICF)."""
         return int(candidatas[np.argmax(self.lexico.prior[candidatas])])
 
-    def _ordenar_por_entropia(
+    def ordenar_por_entropia(
         self, entropias: np.ndarray, candidatas: np.ndarray
     ) -> np.ndarray:
         """Ordem de preferência: maior entropia, depois ser candidata, depois prior.
@@ -138,6 +185,10 @@ class Motor:
         O desempate por "também é candidata" é ganho grátis: entre duas palavras
         que separam igualmente bem, a que pode ser a resposta tem chance não-nula
         de encerrar o jogo (seção 4.5).
+
+        Pública porque o nível 3 (`termo/nivel3.py`) usa esta mesma ordem como
+        "move ordering" da busca: os primeiros da lista são os candidatos a jogada
+        ótima e os que mais ajudam a poda.
         """
         e_candidata = np.zeros(len(self.lexico), dtype=bool)
         e_candidata[candidatas] = True
@@ -160,7 +211,7 @@ class Motor:
             return Sugestao(i, palavras[i], 0.0, "única candidata restante", True)
 
         if m == 2:
-            i = self._melhor_candidata(candidatas)
+            i = self.melhor_candidata(candidatas)
             outra = [palavras[j] for j in candidatas if j != i]
             return Sugestao(
                 i, palavras[i], 0.0,
@@ -174,7 +225,7 @@ class Motor:
             tentativa == self.n_max_tentativas - 1 and m <= self.limiar_endgame
         )
         if ultima or penultima_apertada:
-            i = self._melhor_candidata(candidatas)
+            i = self.melhor_candidata(candidatas)
             motivo = (
                 "última tentativa: só faz sentido chutar uma candidata"
                 if ultima
@@ -189,7 +240,7 @@ class Motor:
             return Sugestao(i, palavras[i], 0.0, motivo, True, alternativas)
 
         entropias = self.entropias(candidatas)
-        ordem = self._ordenar_por_entropia(entropias, candidatas)
+        ordem = self.ordenar_por_entropia(entropias, candidatas)
         conjunto = set(candidatas.tolist())
         melhor = int(ordem[0])
         alternativas = [

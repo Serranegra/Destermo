@@ -87,8 +87,8 @@
       "banha",
       "barba"
     ],
-    "segundos": 0.23388009995687753,
-    "segundos_por_jogo": 0.00015592006663791837,
+    "segundos": 0.24193090002518147,
+    "segundos_por_jogo": 0.00016128726668345432,
     "temperatura": 1.0,
     "extras": {}
   },
@@ -180,8 +180,8 @@
       "burra",
       "canso"
     ],
-    "segundos": 1.5713148000650108,
-    "segundos_por_jogo": 0.0010475432000433406,
+    "segundos": 1.4141646000789478,
+    "segundos_por_jogo": 0.0009427764000526319,
     "temperatura": 1.0,
     "extras": {}
   },
@@ -239,8 +239,8 @@
       "dobre",
       "donde"
     ],
-    "segundos": 0.11304970004130155,
-    "segundos_por_jogo": 7.536646669420104e-05,
+    "segundos": 0.1659724999917671,
+    "segundos_por_jogo": 0.00011064833332784474,
     "temperatura": 1.0,
     "extras": {}
   },
@@ -260,8 +260,8 @@
     },
     "derrotas": [],
     "piores_casos": [],
-    "segundos": 16.033654099912383,
-    "segundos_por_jogo": 0.010689102733274922,
+    "segundos": 4.7540051999967545,
+    "segundos_por_jogo": 0.0031693367999978362,
     "temperatura": 1.0,
     "extras": {}
   }

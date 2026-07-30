@@ -11,6 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import numpy as np
 import pytest
 
+from termo import entropia
 from termo.entropia import Motor
 from termo.feedback import (
     calcular_codigo,
@@ -170,6 +171,36 @@ def test_entropia_bate_com_referencia_lenta(motor):
             (v / total) * math.log2(v / total) for v in baldes.values() if v > 0
         )
         assert entropias[g] == pytest.approx(esperada, abs=1e-9)
+
+
+def test_caminho_rapido_de_entropia_bate_com_o_geral(motor, monkeypatch):
+    """Com poucas candidatas a entropia usa outro algoritmo (`_entropias_poucas`).
+
+    Ele existe só por velocidade — 10x com 4 candidatas, e é onde a busca do nível
+    3 passa a maior parte do tempo —, então o que se exige dele é ser
+    indistinguível do caminho geral, não "parecido". `LIMIAR_POUCAS = 0` desliga.
+    """
+    random.seed(23)
+    conjuntos = [
+        np.array(sorted(random.sample(range(len(motor.lexico)), tamanho)), dtype=np.int32)
+        for tamanho in (2, 3, 5, 8, 12)
+    ]
+    rapidas = [motor.entropias(c) for c in conjuntos]
+
+    monkeypatch.setattr(entropia, "LIMIAR_POUCAS", 0)
+    for candidatas, rapida in zip(conjuntos, rapidas):
+        geral = motor.entropias(candidatas)
+        assert rapida == pytest.approx(geral, abs=1e-12), len(candidatas)
+
+
+def test_entropia_rapida_aguenta_prior_degenerado(lexico):
+    """T minúsculo zera grupos inteiros, e log₂(0) é o jeito óbvio de errar isto."""
+    degenerado = lexico.com_temperatura(0.01)
+    motor = Motor(degenerado)
+    candidatas = np.arange(len(degenerado) - 6, len(degenerado), dtype=np.int32)
+    assert degenerado.prior[candidatas].sum() == 0.0  # o cenário existe mesmo
+    entropias = motor.entropias(candidatas)
+    assert np.isfinite(entropias).all()
 
 
 def test_entropia_e_zero_com_uma_candidata(motor):

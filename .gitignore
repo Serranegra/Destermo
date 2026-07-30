@@ -15,6 +15,10 @@ CLAUDE.md
 # data/aberturas.json FICA versionado: é a conta mais cara do uso diário
 # (partições do léxico inteiro contra si mesmo) e não muda a não ser que o
 # léxico ou o ICF mudem — não faz sentido recalcular a cada checkout.
+#
+# data/aberturas_nivel3.json, idem, e com muito mais razão: a abertura do nível 3
+# é uma busca na árvore de decisão a partir das 6.046 candidatas e leva dezenas de
+# minutos. Sem ela versionada, `--nivel 3` seria inutilizável na primeira partida.
 
 # O léxico final (termo_lexico_5letras.txt) e os PNGs/JSONs de resultados/ FICAM
 # versionados: são o que o README referencia e o que se quer comparar entre

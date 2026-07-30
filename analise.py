@@ -4,12 +4,14 @@
     python benchmark.py --bateria realista
     python benchmark.py --bateria completo
     python benchmark.py --varredura-t
+    python benchmark.py --nivel3
     python analise.py
 
 Gera em `resultados/`:
-    distribuicao_<bateria>.png   distribuição de tentativas por estratégia
-    curva_temperatura.png        tentativas médias e taxa de vitória vs. T
-    tabela.md                    a mesma informação em texto (table view)
+    distribuicao_<bateria>.png        distribuição de tentativas por estratégia
+    distribuicao_nivel3_<bateria>.png o mesmo, nível 2 vs nível 3
+    curva_temperatura.png             tentativas médias e taxa de vitória vs. T
+    tabela.md                         a mesma informação em texto (table view)
 
 Cada gráfico sai em duas versões, clara e escura — a escura usa passos próprios
 das mesmas rampas, não uma inversão automática.
@@ -43,8 +45,10 @@ DIR_RESULTADOS = Path(__file__).resolve().parent / "resultados"
 # contraste contra a superfície. A paleta de referência anterior passava nos
 # pares adjacentes mas colapsava em 5,7 no par laranja/dourado.
 #
-# A ordem das séries segue a dos JSONs do benchmark: aleatória, freq. de letras,
-# mais provável, entropia.
+# A ordem dos slots segue a da tabela do benchmark: aleatória, freq. de letras,
+# mais provável, entropia. Quem escolhe o slot de cada série é `cores_das_series`,
+# pelo NOME da estratégia — desde que o nível 3 entrou, a posição na lista não
+# identifica mais a série (no head-to-head são só duas, e o verde é de uma delas).
 TEMAS = {
     "claro": {
         # Passos escuros das rampas — o osso é claro demais para os hex nominais.
@@ -81,6 +85,41 @@ def carregar(nome: str) -> list[dict] | None:
     return json.loads(caminho.read_text(encoding="utf-8"))
 
 
+def cores_das_series(resultados: list[dict], tema: dict) -> list[str]:
+    """Uma cor por série, escolhida pelo PAPEL da estratégia e não pela posição.
+
+    O verde é exclusivo da série de entropia (brand/README.md), então ele sai do
+    nome da estratégia. O nível 3 fica no xisto claro (slot 1) e não no dourado:
+    no head-to-head as duas séries são vizinhas, e dourado ao lado de verde é
+    justamente o par que colapsa sob deuteranopia. As demais preenchem os slots
+    livres na ordem em que aparecem, o que reproduz a paleta original da tabela
+    de quatro estratégias.
+    """
+    preferido = {"entropia": 3, "nível 3": 1}
+    slots: list[int | None] = [None] * len(resultados)
+    livres = list(range(len(tema["series"])))
+    for i, resultado in enumerate(resultados):
+        for prefixo, slot in preferido.items():
+            if resultado["estrategia"].startswith(prefixo) and slot in livres:
+                slots[i] = slot
+                livres.remove(slot)
+                break
+    for i, slot in enumerate(slots):
+        if slot is None:
+            if livres:
+                slots[i] = livres.pop(0)
+                continue
+            # A paleta da marca tem 4 cores e não se inventa uma quinta sem
+            # refazer a verificação de CVD (brand/README.md). Duas séries com a
+            # mesma cor é um gráfico ilegível, então isto avisa em vez de sair
+            # calado — o previsto é comparar 4 estratégias ou fazer o
+            # head-to-head de 2, nunca 5 de uma vez.
+            slots[i] = i % len(tema["series"])
+            print(f"  ! {len(resultados)} séries e só {len(tema['series'])} cores: "
+                  f"'{resultados[i]['estrategia']}' repete a cor de outra série")
+    return [tema["series"][slot] for slot in slots]
+
+
 def aplicar_tema(figura, eixos_lista, tema: dict) -> None:
     figura.patch.set_facecolor(tema["superficie"])
     for eixos in eixos_lista:
@@ -96,7 +135,13 @@ def aplicar_tema(figura, eixos_lista, tema: dict) -> None:
         eixos.set_axisbelow(True)
 
 
-def grafico_distribuicao(resultados: list[dict], bateria: str, modo: str) -> Path:
+def grafico_distribuicao(
+    resultados: list[dict],
+    bateria: str,
+    modo: str,
+    nome: str | None = None,
+    subtitulo: str = "",
+) -> Path:
     """Barras agrupadas: % dos jogos resolvidos em 1..6 tentativas, por estratégia."""
     tema = TEMAS[modo]
     plt.rcParams["font.family"] = FONTES
@@ -104,6 +149,7 @@ def grafico_distribuicao(resultados: list[dict], bateria: str, modo: str) -> Pat
     categorias = [str(n) for n in range(1, N_MAX + 1)] + ["não\nresolveu"]
     figura, eixos = plt.subplots(figsize=(9.5, 5.0), dpi=170)
 
+    cores = cores_das_series(resultados, tema)
     n_series = len(resultados)
     # 2px de folga da superfície entre barras vizinhas, não uma borda desenhada.
     largura = 0.78 / n_series
@@ -121,7 +167,7 @@ def grafico_distribuicao(resultados: list[dict], bateria: str, modo: str) -> Pat
             [p + deslocamento for p in posicoes],
             alturas,
             width=largura * 0.92,
-            color=tema["series"][s],
+            color=cores[s],
             label=resultado["estrategia"],
             zorder=3,
         )
@@ -141,7 +187,7 @@ def grafico_distribuicao(resultados: list[dict], bateria: str, modo: str) -> Pat
     eixos.set_ylabel("% dos jogos", color=tema["tinta2"], fontsize=10, labelpad=8)
     eixos.set_title(
         f"Distribuição de tentativas — bateria {bateria} "
-        f"({resultados[0]['n_jogos']} palavras)",
+        f"({resultados[0]['n_jogos']} palavras){subtitulo}",
         color=tema["tinta"], fontsize=13, pad=14, loc="left", fontweight="medium",
     )
     legenda = eixos.legend(
@@ -153,7 +199,7 @@ def grafico_distribuicao(resultados: list[dict], bateria: str, modo: str) -> Pat
     aplicar_tema(figura, [eixos], tema)
     figura.tight_layout()
     sufixo = "" if modo == "claro" else "_dark"
-    caminho = DIR_RESULTADOS / f"distribuicao_{bateria}{sufixo}.png"
+    caminho = DIR_RESULTADOS / f"{nome or f'distribuicao_{bateria}'}{sufixo}.png"
     figura.savefig(caminho, facecolor=tema["superficie"])
     plt.close(figura)
     return caminho
@@ -285,6 +331,18 @@ def main() -> None:
             blocos[f"Comparação de estratégias — bateria {bateria}"] = resultados
             for modo in TEMAS:
                 print(f"  {grafico_distribuicao(resultados, bateria, modo)}")
+
+    for bateria in ("realista", "completo"):
+        resultados = carregar(f"comparacao_nivel3_{bateria}.json")
+        if resultados:
+            blocos[f"Nível 2 vs nível 3 — bateria {bateria}"] = resultados
+            for modo in TEMAS:
+                caminho = grafico_distribuicao(
+                    resultados, bateria, modo,
+                    nome=f"distribuicao_nivel3_{bateria}",
+                    subtitulo="\nproxy da entropia vs. objetivo real",
+                )
+                print(f"  {caminho}")
 
     for bateria in ("realista", "completo"):
         varredura = carregar(f"varredura_t_{bateria}.json")

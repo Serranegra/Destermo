@@ -7,6 +7,10 @@ por um bot, uma API ou uma página web não exige mexer no motor (seção 7.4).
     python solver.py            # T = 1.0
     python solver.py --t 5      # outra temperatura do prior
     python solver.py --t inf    # entropia pura, sem prior de frequência
+    python solver.py --nivel 3  # minimiza tentativas esperadas (mais lento)
+
+Os dois níveis expõem a mesma interface (`abertura`, `escolher`), então daqui para
+baixo nada sabe qual dos dois está respondendo.
 """
 
 from __future__ import annotations
@@ -25,6 +29,7 @@ from termo.feedback import (
     padrao_possivel,
 )
 from termo.lexico import Lexico
+from termo.nivel3 import BEAM, PROFUNDIDADE, MotorNivel3
 
 AJUDA = """
 comandos:
@@ -42,6 +47,9 @@ feedback: 5 caracteres, um por posição
 
 VOLTAR = ("voltar", "desfazer", "undo")
 SAIR = ("sair", "quit", "exit")
+
+# Os dois motores têm a mesma interface; a CLI não distingue um do outro.
+Cerebro = Motor | MotorNivel3
 
 
 class Cancelado(Exception):
@@ -72,6 +80,8 @@ def formatar_sugestao(sugestao: Sugestao, rotulo: str) -> str:
     detalhes = []
     if sugestao.entropia > 0:
         detalhes.append(f"{sugestao.entropia:.2f} bits")
+    if sugestao.valor_esperado is not None:
+        detalhes.append(f"E={sugestao.valor_esperado:.2f} tentativas")
     detalhes.append("é candidata" if sugestao.e_candidata else "não é candidata")
     linhas = [
         f"  {rotulo}: {sugestao.palavra}   ({', '.join(detalhes)})",
@@ -86,14 +96,14 @@ def formatar_sugestao(sugestao: Sugestao, rotulo: str) -> str:
     return "\n".join(linhas)
 
 
-def mostrar_candidatas(motor: Motor, candidatas: np.ndarray, limite: int) -> None:
+def mostrar_candidatas(motor: Cerebro, candidatas: np.ndarray, limite: int) -> None:
     ordem = candidatas[np.argsort(-motor.lexico.prior[candidatas])]
     nomes = [motor.lexico.mostrar(i) for i in ordem[:limite]]
     print(f"  {len(candidatas)} candidatas (mais prováveis primeiro):")
     print("   " + ", ".join(nomes) + (" ..." if len(candidatas) > limite else ""))
 
 
-def ler_tentativa(motor: Motor, candidatas: np.ndarray, rodada: int) -> str:
+def ler_tentativa(motor: Cerebro, candidatas: np.ndarray, rodada: int) -> str:
     """Devolve a tentativa já normalizada (sem acento) — é o que o motor usa."""
     while True:
         texto = ler(f"\n[{rodada}] tentativa > ").lower()
@@ -150,17 +160,21 @@ AVISO_SEM_CANDIDATAS = """
     'voltar' para desfazer a rodada anterior."""
 
 
-def rotular(motor: Motor, tentativa: str) -> str:
+def rotular(motor: Cerebro, tentativa: str) -> str:
     """Forma acentuada da tentativa, quando ela está no léxico."""
     indice = motor.lexico.indice.get(tentativa)
     return motor.lexico.mostrar(indice) if indice is not None else tentativa
 
 
-def jogar(motor: Motor) -> None:
+def jogar(motor: Cerebro) -> None:
     candidatas = motor.todas_candidatas()
     historico: list[np.ndarray] = []
 
-    print("\nCalculando a melhor abertura...")
+    if isinstance(motor, MotorNivel3) and not motor.abertura_em_cache():
+        print("\nAbertura do nível 3 fora do cache: são minutos de busca na árvore"
+              "\n(uma vez só — o resultado vai para data/aberturas_nivel3.json).")
+    else:
+        print("\nCalculando a melhor abertura...")
     print(formatar_sugestao(motor.abertura(), "melhor abertura"))
 
     rodada = 1
@@ -212,15 +226,36 @@ def main() -> None:
         "--t", "--temperatura", dest="temperatura", default="1.0",
         help="temperatura do prior de frequência ('inf' = entropia pura)",
     )
+    analisador.add_argument(
+        "--nivel", type=int, choices=(2, 3), default=2,
+        help="2 = entropia (padrão); 3 = minimiza tentativas esperadas",
+    )
+    analisador.add_argument(
+        "--beam", type=int, default=BEAM,
+        help=f"nível 3: palpites testados por nó (padrão {BEAM})",
+    )
+    analisador.add_argument(
+        "--profundidade", type=int, default=PROFUNDIDADE,
+        help=f"nível 3: níveis de busca abaixo da raiz (padrão {PROFUNDIDADE})",
+    )
     argumentos = analisador.parse_args()
     bruto = argumentos.temperatura.lower()
     temperatura = math.inf if bruto in ("inf", "infinito") else float(bruto)
 
-    print("Solver de Termo — entropia com prior de frequência")
-    print("Digite '?' a qualquer momento para ver os comandos.")
     lexico = Lexico.carregar(temperatura)
-    motor = Motor(lexico)
-    print(f"léxico: {len(lexico)} palavras   T={temperatura}")
+    motor: Cerebro = Motor(lexico)
+    if argumentos.nivel == 3:
+        motor = MotorNivel3(motor, argumentos.beam, argumentos.profundidade)
+        print("Solver de Termo — nível 3: menor nº esperado de tentativas")
+    else:
+        print("Solver de Termo — entropia com prior de frequência")
+    print("Digite '?' a qualquer momento para ver os comandos.")
+    busca = (
+        f"   beam={argumentos.beam} profundidade={argumentos.profundidade}"
+        if argumentos.nivel == 3
+        else ""
+    )
+    print(f"léxico: {len(lexico)} palavras   T={temperatura}{busca}")
     jogar(motor)
 
 

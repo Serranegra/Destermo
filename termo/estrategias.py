@@ -6,10 +6,14 @@ que o simulador não precise saber com qual está lidando.
   1. Aleatória            piso de comparação
   2. Frequência de letras a heurística que a maioria dos solvers usa
   3. Mais provável        sempre a candidata de menor ICF
-  4. Entropia             o motor da seção 4
+  4. Entropia             o motor da seção 4 (nível 2)
+  5. Nível 3              minimiza tentativas esperadas, não bits (opcional)
 
 As três primeiras sempre chutam uma candidata, então a regra de endgame não se
 aplica a elas: nunca "queimam" uma tentativa.
+
+A quinta é opcional porque custa ordens de magnitude mais que as outras quatro
+juntas — entra no benchmark só quando pedida (`benchmark.py --nivel3`).
 """
 
 from __future__ import annotations
@@ -20,6 +24,7 @@ import numpy as np
 
 from .entropia import Motor
 from .lexico import Lexico
+from .nivel3 import BEAM, PROFUNDIDADE, MotorNivel3
 
 
 class Estrategia(ABC):
@@ -102,11 +107,51 @@ class Entropia(Estrategia):
         return self.motor.escolher_com_cache(candidatas, rodada).indice
 
 
-def construir_todas(motor: Motor, semente: int = 0) -> list[Estrategia]:
-    """As quatro estratégias da seção 5.2, na ordem da tabela."""
-    return [
+class Nivel3(Estrategia):
+    """Minimiza tentativas esperadas em vez de bits ganhos (§4.1, nível 3).
+
+    Mesma forma da `Entropia`: abertura fixa (não depende de feedback) e escolhas
+    memoizadas pelo conjunto de candidatas. Aqui o cache pesa muito mais — cada
+    escolha custa uma árvore de decisão inteira.
+    """
+
+    def __init__(self, motor: MotorNivel3):
+        self.motor = motor
+        self.nome = f"nível 3 (K={motor.beam}, P={motor.profundidade})"
+        self._abertura: int | None = None
+
+    def escolher(self, candidatas: np.ndarray, rodada: int) -> int:
+        if rodada == 1:
+            if self._abertura is None:
+                self._abertura = self.motor.abertura().indice
+            return self._abertura
+        return self.motor.escolher_com_cache(candidatas, rodada).indice
+
+
+def construir_todas(
+    motor: Motor,
+    semente: int = 0,
+    nivel3: MotorNivel3 | None = None,
+) -> list[Estrategia]:
+    """As quatro estratégias da seção 5.2, na ordem da tabela.
+
+    Com um motor de nível 3 em `nivel3`, ele entra como quinta série — mas a
+    paleta da marca tem quatro cores, então o gráfico previsto para ele é o
+    head-to-head contra a entropia (`benchmark.py --nivel3`), não esta tabela.
+    """
+    estrategias: list[Estrategia] = [
         Aleatoria(semente),
         FrequenciaDeLetras(motor.lexico),
         MaisProvavel(motor.lexico),
         Entropia(motor),
     ]
+    if nivel3 is not None:
+        estrategias.append(Nivel3(nivel3))
+    return estrategias
+
+
+def construir_nivel3(
+    motor: Motor, beam: int = BEAM, profundidade: int = PROFUNDIDADE
+) -> Nivel3:
+    """Atalho para o head-to-head nível 2 vs nível 3 sobre o mesmo motor."""
+    return Nivel3(MotorNivel3(motor, beam, profundidade))

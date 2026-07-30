@@ -65,6 +65,28 @@ python solver.py --t inf
 
 `--t inf` desliga o prior de frequência e recupera a entropia pura.
 
+O nível 3 do algoritmo — que minimiza o número **esperado de tentativas** em vez
+de maximizar bits por jogada — está em [`termo/nivel3.py`](termo/nivel3.py) e
+entra por uma flag. O nível 2 continua sendo o padrão:
+
+```bash
+python solver.py --nivel 3
+```
+
+```
+  melhor abertura: tosar   (5.91 bits, E=3.01 tentativas, é candidata)
+  motivo: melhor abertura do nível 3 (em cache)
+  alternativas: tarso*, sertã*, terso*, tória*, tirão*   (* = também é candidata)
+```
+
+Ele responde em menos de um segundo no meio do jogo, mas a **abertura** é uma
+busca a partir das 6.046 candidatas e levou **8,8 min** para calcular aqui — por
+isso ela vem versionada em `data/aberturas_nivel3.json`, como a do nível 2. O
+tamanho da busca é ajustável por `--beam` (palpites testados por nó) e
+`--profundidade` (níveis de busca antes de cair na política gulosa); cada
+configuração tem a sua própria abertura em cache, e uma configuração nova paga os
+8,8 min de novo.
+
 Na primeira execução o programa baixa o léxico do repositório
 [`fserb/pt-br`](https://github.com/fserb/pt-br) e constrói a matriz de padrões
 (~4 s, 37 MB em `data/`). Depois disso o arranque é instantâneo.
@@ -81,6 +103,10 @@ python benchmark.py --bateria completo
 
 ```bash
 python benchmark.py --varredura-t
+```
+
+```bash
+python benchmark.py --nivel3
 ```
 
 ```bash
@@ -103,8 +129,9 @@ página web não exige mexer em nada dentro de `termo/`.
 | `termo/feedback.py` | Normalização de acentos, regra das duas passadas, codificação base-3, detector de padrão impossível |
 | `termo/lexico.py` | Download, filtro de 5 caracteres, agrupamento por forma normalizada, dedupe por ICF, prior |
 | `termo/matriz.py` | Matriz 6.046 × 6.046 de padrões pré-computados (numpy vetorizado) |
-| `termo/entropia.py` | Cálculo de entropia, regra de endgame, cache da abertura |
-| `termo/estrategias.py` | As quatro estratégias do benchmark |
+| `termo/entropia.py` | Cálculo de entropia, regra de endgame, cache da abertura (nível 2) |
+| `termo/nivel3.py` | Busca na árvore de decisão pelo menor nº esperado de tentativas (nível 3) |
+| `termo/estrategias.py` | As estratégias do benchmark |
 | `solver.py` | CLI interativa (só I/O) |
 | `benchmark.py` | Simulação de partidas e métricas |
 | `analise.py` | Gráficos e tabela de resultados |
@@ -147,19 +174,19 @@ sorteia. `média` conta só as partidas vencidas; `penal.` conta derrota como 7.
 | estratégia | média | penal. | vitória | 1 | 2 | 3 | 4 | 5 | 6 | s/jogo |
 |---|---|---|---|---|---|---|---|---|---|---|
 | aleatória | 4.269 | 4.505 | 91.3% | 0 | 54 | 299 | 438 | 383 | 196 | 0.0002 |
-| freq. de letras | 4.171 | 4.371 | 92.9% | 0 | 44 | 333 | 523 | 329 | 165 | 0.0010 |
+| freq. de letras | 4.171 | 4.371 | 92.9% | 0 | 44 | 333 | 523 | 329 | 165 | 0.0009 |
 | mais provável | 3.707 | 3.740 | 99.0% | 1 | 108 | 555 | 538 | 227 | 56 | 0.0001 |
-| **entropia (T=1)** | **3.581** | **3.581** | **100.0%** | 1 | 24 | 664 | 725 | 86 | 0 | 0.0107 |
+| **entropia (T=1)** | **3.581** | **3.581** | **100.0%** | 1 | 24 | 664 | 725 | 86 | 0 | 0.0032 |
 
 Stress test — léxico completo (6.046 palavras, incluindo obscuridades que o Termo
 nunca sortearia):
 
 | estratégia | média | penal. | vitória | 1 | 2 | 3 | 4 | 5 | 6 | s/jogo |
 |---|---|---|---|---|---|---|---|---|---|---|
-| aleatória | 4.328 | 4.564 | 91.2% | 1 | 154 | 1078 | 1900 | 1561 | 818 | 0.0001 |
-| freq. de letras | 4.144 | 4.363 | 92.3% | 1 | 162 | 1400 | 2104 | 1301 | 615 | 0.0006 |
+| aleatória | 4.328 | 4.564 | 91.2% | 1 | 154 | 1078 | 1900 | 1561 | 818 | 0.0002 |
+| freq. de letras | 4.144 | 4.363 | 92.3% | 1 | 162 | 1400 | 2104 | 1301 | 615 | 0.0009 |
 | mais provável | 4.268 | 4.459 | 93.0% | 1 | 145 | 1201 | 2027 | 1496 | 752 | 0.0001 |
-| **entropia (T=1)** | **3.946** | **3.957** | **99.7%** | 1 | 56 | 1560 | 3150 | 1164 | 94 | 0.0032 |
+| **entropia (T=1)** | **3.946** | **3.957** | **99.7%** | 1 | 56 | 1560 | 3150 | 1164 | 94 | 0.0009 |
 
 ![Distribuição de tentativas](resultados/distribuicao_realista.png)
 
@@ -176,8 +203,9 @@ estar certo. Quando as secretas passam a incluir o léxico inteiro, ela cai de
 3,71 para 4,27 e fica atrás da heurística de frequência de letras na média. A
 entropia degrada de 3,58 para 3,95 e mantém 99,7%.
 
-Custo: a entropia é ~100× mais lenta por jogo que as heurísticas baratas — mas
-"lenta" aqui são 11 ms. Para uso interativo é irrelevante.
+Custo: a entropia é ~30× mais lenta por jogo que as heurísticas baratas — mas
+"lenta" aqui são 3,2 ms. Para uso interativo é irrelevante. (Eram 11 ms até o
+caminho rápido de entropia descrito no Nível 3, que a acelerou 3,4×.)
 
 ### Varredura de temperatura
 
@@ -200,6 +228,110 @@ O mínimo cai exatamente em **T = 1**, o valor padrão da v1. A curva é rasa en
 0,5 e 10 (amplitude de 0,07 tentativa, dentro do ruído de 1.500 partidas) e só
 piora de verdade em T→∞. Ou seja: **ter um prior importa; calibrá-lo com precisão,
 nem tanto.**
+
+### Nível 3: o proxy contra o objetivo real
+
+A especificação pôs o Nível 3 fora de escopo por custo computacional (§4.1). Ele
+está implementado em [`termo/nivel3.py`](termo/nivel3.py) e o custo agora tem
+número. A conta é a do 3B1B, com o limite de rodadas dentro dela:
+
+```
+V(S, r) = min_g [ 1 + Σ_{padrão ≠ GGGGG} P(padrão | S) · V(S_padrão, r-1) ]
+V(S, 0) = 7        acabaram as rodadas sem acertar
+```
+
+Três coisas tornam isso viável em 6.046 palavras: **beam** (só os K palpites de
+maior entropia entram na busca — o Nível 2 é o *move ordering*), **profundidade**
+(abaixo de P níveis a recursão cai na política gulosa do Nível 2, o que dá um
+limite superior de V e torna a busca *anytime*) e **memoização** com
+branch-and-bound.
+
+#### A abertura muda
+
+| | abertura | entropia | posição no ranking de entropia |
+|---|---|---|---|
+| Nível 2 | `tarso` | 5,97 bits | 1ª |
+| Nível 3 | `tosar` | 5,91 bits | **6ª** |
+
+As duas usam exatamente as mesmas cinco letras. `tosar` é a sexta do léxico em
+entropia — o Nível 2 a lista por último entre as alternativas — e mesmo assim é a
+que minimiza o número esperado de tentativas (E = 3,01). É a correção do 3B1B em
+uma linha: **maximizar bits não é minimizar tentativas.**
+
+#### No meio do jogo a diferença é grande
+
+Depois de `tarso` com o `r` verde sobram 51 candidatas:
+
+| | jogada | entropia | E[tentativas] |
+|---|---|---|---|
+| Nível 2 (entropia) | `miúde` | 2,01 bits | 2,05 |
+| Nível 3 | `verde` | 1,83 bits | **1,43** |
+
+O Nível 3 abre mão de 0,18 bit para jogar uma **candidata**, que pode encerrar o
+jogo ali. Com T=1 isso não é aposta: `verde` sozinha carrega 65% da massa de
+probabilidade das 51. Subindo T o prior achata e a escolha converge para a do
+Nível 2 — em T=5 e T→∞ os dois jogam `miúde`. O dial da §4.2 governa os dois
+níveis.
+
+#### Head-to-head
+
+As 300 palavras de menor ICF, mesmas secretas para os dois (`--nivel3` usa uma
+amostra menor que a tabela principal, então a linha da entropia aqui não é
+comparável com os 3,581 de 1.500 palavras):
+
+| estratégia | média | penal. | vitória | 1 | 2 | 3 | 4 | 5 | 6 | s/jogo |
+|---|---|---|---|---|---|---|---|---|---|---|
+| entropia (T=1) | 3.397 | 3.397 | 100.0% | 0 | 5 | 174 | 118 | 3 | 0 | 0.0088 |
+| **nível 3 (K=10, P=1)** | **2.853** | **2.853** | **100.0%** | 0 | 77 | 191 | 31 | 1 | 0 | 0.3343 |
+
+![Nível 2 vs nível 3](resultados/distribuicao_nivel3_realista.png)
+
+**O objetivo real vale 0,54 tentativa** — 3,397 para 2,853, com as duas
+estratégias resolvendo 100%. O ganho não vem de evitar derrotas: vem de **acabar o
+jogo na 2ª tentativa**, que a entropia consegue em 5 partidas e o Nível 3 em 77.
+Maximizar bits é exatamente a política que se recusa a tentar ganhar cedo.
+
+Custo: **38× mais CPU** (0,33 s por jogo contra 8,8 ms), mais 8,8 min de abertura.
+Para uso interativo é tranquilo; para varrer 1.500 palavras em seis temperaturas,
+não. A decisão da especificação continua defensável — o que mudou é que agora ela
+é uma escolha informada, não uma suposição.
+
+#### O gargalo não era a busca
+
+Perfilando a busca num estado de 223 candidatas, **95% do tempo estava em escolher
+o beam** — a varredura de entropia do léxico — e só ~2% na recursão que minimiza
+tentativas. Pior: 87% das varreduras eram em conjuntos de **até 8 candidatas**, ou
+seja, percorrer 6.046 palavras para ranquear palpites contra quatro.
+
+O caminho geral de `entropias` monta uma tabela de 6.046 × 243 baldes; com poucas
+candidatas isso é 11 MB alocados e zerados para preencher meia dúzia de colunas
+por linha. Reescrevendo a mesma soma por agrupamento par a par
+(`Motor._entropias_poucas`, `H = -Σ_c w_c·log₂(massa do grupo de c)`, custo n·m² em
+vez de n·243), mais um cache do beam por conjunto:
+
+| | antes | depois | |
+|---|---|---|---|
+| jogada com 223 candidatas | 6,96 s | 2,03 s | 3,4× |
+| abertura do nível 3 | 953 s | 529 s | 1,8× |
+| **nível 2, bateria realista** | 10,7 ms | 3,2 ms | **3,4×** |
+
+A conta é a mesma, não uma aproximação — e isso foi verificado, não suposto: a
+abertura recalculada dá `tosar` com `3.0094161966572304`, dígito por dígito, e
+reprocessar as duas baterias principais (7.546 partidas × 4 estratégias) muda
+**apenas** os campos de tempo dos JSONs. O nível 2 levou o ganho junto, de graça.
+
+#### Uma ressalva honesta
+
+O Nível 3 otimiza o valor esperado **sob o prior**, e o prior de T=1 é agressivo.
+A consequência é que ele **sacrifica palavras raríssimas de propósito**: prefere
+chutar a candidata provável a gastar uma jogada separando o grupo. Em `criva`
+(ICF 19) ele entra na espiral `prima → urina → brida → crica` e perde uma partida
+que o Nível 2 ganha. Na bateria realista — o que o Termo de fato sorteia — isso
+nunca acontece, e é justamente onde ele ganha 0,54 tentativa.
+
+O `E = 3,01` da abertura é uma esperança ponderada pelo prior sobre o léxico
+inteiro; a média do benchmark é uma contagem simples sobre as mais comuns. Os dois
+números medem coisas diferentes e não se comparam.
 
 ### Efeito da migração v1.0 → v1.1
 
@@ -270,8 +402,9 @@ distingue as três com certeza dá 100%.
 
 A regra foi implementada como especificado, mas o limiar é configurável
 (`Motor(limiar_endgame=...)`, padrão 3). Com 2 ele vira inócuo, já que `len(C) <= 2`
-tem tratamento próprio. Fazer isso direito exigiria minimizar tentativas esperadas
-por simulação — o Nível 3, explicitamente fora do escopo da v1.
+tem tratamento próprio. Fazer isso direito exige minimizar tentativas esperadas —
+o Nível 3, que a v1 pôs fora de escopo e que existe agora em
+[`termo/nivel3.py`](termo/nivel3.py) (seção abaixo).
 
 ### Detector de feedback logicamente impossível
 
@@ -300,9 +433,13 @@ silenciosamente errados.
 
 ## Fora de escopo (v1)
 
-Dueto e Quarteto; Nível 3 do algoritmo (minimização direta de tentativas
-esperadas); curadoria manual adicional do léxico; interface web/bot/API;
+Dueto e Quarteto; curadoria manual adicional do léxico; interface web/bot/API;
 separação formal entre lista de respostas e lista de tentativas válidas.
+
+O Nível 3 também estava nesta lista (§12) e saiu dela: está implementado em
+[`termo/nivel3.py`](termo/nivel3.py), atrás da flag `--nivel 3`. O nível 2 segue
+sendo o padrão — o motivo da especificação (custo computacional) não desapareceu,
+só ficou mensurável.
 
 ## Marca
 

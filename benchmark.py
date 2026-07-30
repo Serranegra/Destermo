@@ -8,6 +8,7 @@ uma heurística simples chega perto?
     python benchmark.py --bateria completo    # stress test: léxico inteiro
     python benchmark.py --varredura-t         # tentativas médias em função de T
     python benchmark.py --n 300               # amostra menor, para iterar rápido
+    python benchmark.py --nivel3              # head-to-head nível 2 vs nível 3
 
 Resultados vão para `resultados/*.json`; os gráficos saem de `analise.py`.
 """
@@ -33,8 +34,10 @@ from termo.estrategias import (
     Estrategia,
     FrequenciaDeLetras,
     MaisProvavel,
+    construir_nivel3,
 )
 from termo.lexico import Lexico
+from termo.nivel3 import BEAM, PROFUNDIDADE
 
 DIR_RESULTADOS = Path(__file__).resolve().parent / "resultados"
 
@@ -43,6 +46,10 @@ DIR_RESULTADOS = Path(__file__).resolve().parent / "resultados"
 # e inflaria artificialmente a média (seção 5.3). A faixa da v1.1 é ~800-1.500,
 # reduzida porque o léxico encolheu de 8.996 para 6.046.
 TAMANHO_REALISTA = 1500
+
+# O nível 3 custa uma árvore de decisão por jogada, não uma varredura de entropia.
+# Amostra menor por padrão; o cache de escolhas amortiza o resto (§4.1, nível 3).
+TAMANHO_NIVEL3 = 300
 
 TEMPERATURAS_VARREDURA = [0.5, 1.0, 2.0, 5.0, 10.0, math.inf]
 
@@ -208,6 +215,33 @@ def rodar_comparacao(bateria: str, n: int | None, temperatura: float,
     return resultados
 
 
+def rodar_nivel3(bateria: str, n: int | None, temperatura: float,
+                 beam: int, profundidade: int) -> list[Resultado]:
+    """Head-to-head nível 2 vs nível 3 (§4.1) sobre exatamente as mesmas secretas.
+
+    Fica num arquivo próprio em vez de entrar na tabela das quatro estratégias:
+    a pergunta aqui é outra — não "entropia compensa?", mas "o proxy da entropia
+    custa quantas tentativas em relação ao objetivo real?".
+    """
+    lexico = Lexico.carregar(temperatura)
+    motor = Motor(lexico)
+    secretas = conjunto_secretas(lexico, bateria, n or TAMANHO_NIVEL3)
+    print(f"\nbateria '{bateria}': {len(secretas)} palavras secretas, T={temperatura}, "
+          f"beam={beam}, profundidade={profundidade}")
+
+    resultados = []
+    for estrategia in (Entropia(motor), construir_nivel3(motor, beam, profundidade)):
+        print(f"\n  {estrategia.nome} ...")
+        resultados.append(avaliar(motor, estrategia, secretas, bateria))
+    resultados[-1].extras = {"beam": beam, "profundidade": profundidade}
+
+    dois, tres = resultados
+    delta = tres.media_penalizada - dois.media_penalizada  # negativo = nível 3 ganha
+    print(f"\n  nível 3 - nível 2: {delta:+.4f} tentativas (média penalizada), "
+          f"{tres.segundos / max(dois.segundos, 1e-9):.0f}x o custo de CPU")
+    return resultados
+
+
 def rodar_varredura_t(bateria: str, n: int | None) -> list[Resultado]:
     """Tentativas médias em função de T (seção 5.5).
 
@@ -245,6 +279,12 @@ def main() -> None:
     analisador.add_argument("--semente", type=int, default=0)
     analisador.add_argument("--varredura-t", action="store_true",
                             help="varre T em vez de comparar estratégias")
+    analisador.add_argument("--nivel3", action="store_true",
+                            help="head-to-head nível 2 vs nível 3 (lento)")
+    analisador.add_argument("--beam", type=int, default=BEAM,
+                            help=f"nível 3: palpites por nó (padrão {BEAM})")
+    analisador.add_argument("--profundidade", type=int, default=PROFUNDIDADE,
+                            help=f"nível 3: níveis de busca (padrão {PROFUNDIDADE})")
     argumentos = analisador.parse_args()
     bruto = str(argumentos.temperatura).lower()
     temperatura = math.inf if bruto in ("inf", "infinito") else float(bruto)
@@ -253,6 +293,12 @@ def main() -> None:
     if argumentos.varredura_t:
         resultados = rodar_varredura_t(argumentos.bateria, argumentos.n)
         nome = f"varredura_t_{argumentos.bateria}.json"
+    elif argumentos.nivel3:
+        resultados = rodar_nivel3(
+            argumentos.bateria, argumentos.n, temperatura,
+            argumentos.beam, argumentos.profundidade,
+        )
+        nome = f"comparacao_nivel3_{argumentos.bateria}.json"
     else:
         resultados = rodar_comparacao(
             argumentos.bateria, argumentos.n, temperatura, argumentos.semente
