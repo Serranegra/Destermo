@@ -1,0 +1,28 @@
+# Tema do app (app.py). As cores são as de brand/README.md — nenhuma delas é
+# escolhida aqui, todas vêm de lá. O que este arquivo faz é mapear a paleta para
+# os slots que o Streamlit expõe; o que ele não cobre (o tabuleiro) é desenhado à
+# mão em `app.py`, com os mesmos hex.
+
+[theme]
+base = "dark"
+primaryColor = "#3AA394"             # verde: botões, foco, seleção
+backgroundColor = "#221C1E"          # ardósia
+secondaryBackgroundColor = "#2C2427" # ardósia clareada: cards, inputs, expanders
+textColor = "#F5EFE9"                # osso
+linkColor = "#3AA394"
+borderColor = "#3E3235"
+baseRadius = "small"
+showWidgetBorder = true
+
+# O monospace é a voz da marca (o lockup é uma), mas só nos títulos e no código —
+# em texto corrido ele cansa e não é o que o léxico precisa.
+font = "sans-serif"
+headingFont = "monospace"
+codeFont = "monospace"
+
+[theme.sidebar]
+backgroundColor = "#1B1618"
+borderColor = "#3E3235"
+
+[browser]
+gatherUsageStats = false
