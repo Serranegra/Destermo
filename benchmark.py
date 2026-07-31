@@ -340,7 +340,14 @@ def rodar_nivel3(bateria: str, n: int | None, temperatura: float,
     return resultados
 
 
-def rodar_ampliado(bateria: str, n: int | None, temperatura: float) -> list[Resultado]:
+def rodar_ampliado(
+    bateria: str,
+    n: int | None,
+    temperatura: float,
+    nivel3: bool = False,
+    beam: int = BEAM,
+    profundidade: int = PROFUNDIDADE,
+) -> list[Resultado]:
     """Head-to-head do espaço de tentativa: 6.046 sondas contra 8.628 (§2.5).
 
     Mesma política, mesmo prior, mesmas secretas — a única diferença é quantas
@@ -352,18 +359,28 @@ def rodar_ampliado(bateria: str, n: int | None, temperatura: float) -> list[Resu
     podem BAIXAR a entropia máxima de nenhuma jogada, mas entropia é um proxy
     (§4.1): trocar uma candidata por uma sonda 0,03 bit melhor abre mão da chance
     de acertar naquela rodada, e essa troca pode sair cara na média.
+
+    Com `nivel3`, a mesma comparação sob o objetivo REAL. É o teste decisivo da
+    hipótese: se o proxy é o que estraga o ganho das sondas, a busca por E[nº de
+    tentativas] deveria aproveitá-las melhor que a política gulosa. O beam sai da
+    ordem de entropia, então as sondas entram na busca como qualquer palavra.
     """
     lexico = Lexico.carregar(temperatura)
     motor = Motor(lexico)
     motor_ampliado = Motor(Lexico.carregar(temperatura, ampliado=True))
-    secretas = conjunto_secretas(lexico, bateria, n)
+    secretas = conjunto_secretas(lexico, bateria, n or (TAMANHO_NIVEL3 if nivel3 else None))
     print(f"\nbateria '{bateria}': {len(secretas)} palavras secretas, T={temperatura}")
     print(f"espaço de tentativa: {len(lexico)} contra {motor_ampliado.n_sondas}")
+    if nivel3:
+        print(f"nível 3: beam={beam}, profundidade={profundidade}")
 
     resultados = []
     for atual, rotulo in ((motor, "6.046"), (motor_ampliado, "8.628")):
-        estrategia = Entropia(atual)
-        estrategia.nome = f"entropia, {rotulo} sondas"
+        if nivel3:
+            estrategia = construir_nivel3(atual, beam, profundidade)
+        else:
+            estrategia = Entropia(atual)
+        estrategia.nome = f"{'nível 3' if nivel3 else 'entropia'}, {rotulo} sondas"
         print(f"\n  {estrategia.nome} ...")
         resultados.append(avaliar(atual, estrategia, secretas, bateria))
     resultados[-1].extras = {"n_sondas": motor_ampliado.n_sondas}
@@ -870,7 +887,8 @@ def main() -> None:
     analisador.add_argument("--catalogo", action="store_true",
                             help="a melhor abertura de cada cenário (lento: ~12 min)")
     analisador.add_argument("--ampliado", action="store_true",
-                            help="head-to-head 6.046 contra 8.628 sondas (§2.5)")
+                            help="head-to-head 6.046 contra 8.628 sondas (§2.5); "
+                                 "com --nivel3, a mesma sob o objetivo real")
     analisador.add_argument("--beam", type=int, default=BEAM,
                             help=f"nível 3: palpites por nó (padrão {BEAM})")
     analisador.add_argument("--profundidade", type=int, default=PROFUNDIDADE,
@@ -896,9 +914,11 @@ def main() -> None:
         nome = "catalogo.json"
     elif argumentos.ampliado:
         resultados = rodar_ampliado(
-            argumentos.bateria, argumentos.n, temperatura
+            argumentos.bateria, argumentos.n, temperatura,
+            argumentos.nivel3, argumentos.beam, argumentos.profundidade,
         )
-        nome = f"comparacao_ampliado_{argumentos.bateria}.json"
+        sufixo = "_nivel3" if argumentos.nivel3 else ""
+        nome = f"comparacao_ampliado{sufixo}_{argumentos.bateria}.json"
     elif argumentos.nivel3:
         resultados = rodar_nivel3(
             argumentos.bateria, argumentos.n, temperatura,

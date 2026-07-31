@@ -243,8 +243,9 @@ python solver.py --ampliado
 ```
 
 Na primeira vez ele baixa o arquivo `conjugações` da fonte e monta uma matriz de
-padrões própria (~10 s). Não espere ganho: [a medição está abaixo](#ampliar-o-espaço-de-tentativa-não-paga)
-e deu zero.
+padrões própria (~10 s). Não espere ganho:
+[a medição está abaixo](#ampliar-o-espaço-de-tentativa-não-paga) e deu zero no
+nível 2 — no nível 3 dá negativo, então lá a opção é contraindicada.
 
 **Atenção ao combinar `--t` com o nível 3.** Só a configuração padrão
 (`T=1, beam=10, profundidade=1`) vem com a abertura pronta em
@@ -803,12 +804,40 @@ Na bateria completa, que é enumeração exaustiva e não amostra, ampliar ganha
 real, e é todo em palavras como `gueja`, `riçar` e `bimar`, que o Termo não
 sorteia. Custa 28% de CPU por jogada e uma segunda matriz de 52 MB.
 
+#### No nível 3 ampliar chega a atrapalhar
+
+Restava a suspeita de que o problema fosse o proxy: se ampliar rende bits que não
+viram tentativas, talvez a busca pelo objetivo real (§4.1) soubesse usá-los. A
+resposta é não — e é pior que empate:
+
+| Espaço de tentativa | Média | Penalizada | s/jogo |
+|---|---|---|---|
+| 6.046 | 2,853 | 2,853 | 0,30 |
+| 8.628 | 2,863 | 2,863 | 2,41 |
+
+**Ampliar piora o nível 3 em 0,010 tentativa e custa 8× a CPU** (300 partidas,
+beam=10, profundidade=1). O motivo não é estatístico, é estrutural: o beam é um
+orçamento fixo de 10 palpites por nó, tirado da ordem de entropia. Medindo a
+composição dele em 40 estados de meio de jogo, **27% dos slots vão para
+conjugações** — 2,7 dos 10 em média, e em 9 dos 40 nós metade ou mais do beam é
+sonda. Cada slot desses é uma jogada que a busca avalia sabendo que ela não pode
+encerrar a partida, no lugar de uma candidata que poderia.
+
+No nível 2 isso é inofensivo, porque lá a entropia não é só a ordenação: é o
+critério. No nível 3 a ordem de entropia é apenas o *move ordering*, e o beam é
+toda a visão que a busca tem do espaço de jogadas — enchê-lo de palavras que
+nunca ganham a rodada estreita a busca em vez de alargá-la. Ampliar o beam
+recuperaria a perda, ao custo que a ampliação queria evitar.
+
 A conclusão é que a separação formal entre as duas listas — que a especificação
-pôs fora de escopo (§12) — **estava certa em ficar fora**, mas por um motivo que
-só se sabe medindo. Não é que sondar com conjugação seja ruim; é que o léxico de
-6.046 já é grande o bastante para conter, para quase todo estado, uma palavra tão
-informativa quanto a melhor conjugação. O `--ampliado` fica como opção porque a
-medição é o resultado, não porque o modo valha a pena.
+pôs fora de escopo (§12) — **estava certa em ficar fora**, e agora com dois
+motivos medidos. No nível 2, porque o léxico de 6.046 já é grande o bastante para
+conter, em quase todo estado, uma palavra tão informativa quanto a melhor
+conjugação. No nível 3, porque sondas competem por um recurso escasso — as vagas
+do beam — contra palavras que ainda podem ganhar o jogo.
+
+O `--ampliado` fica no repositório porque a medição é o resultado; o padrão
+continua sendo, e deve continuar sendo, as 6.046.
 
 ### Nível 2 → nível 3: o proxy contra o objetivo real
 
@@ -1090,8 +1119,9 @@ Dueto e Quarteto; curadoria manual adicional do léxico; interface web/bot/API.
 A separação entre lista de respostas e lista de tentativas válidas também estava
 aqui, e saiu pela porta dos fundos: está implementada (`--ampliado`), mas a
 medição diz que **não vale a pena** — zero de ganho na bateria realista, 0,008
-tentativa na completa. Ficou como resultado, não como recomendação; os números
-estão em [Ampliar o espaço de tentativa não paga](#ampliar-o-espaço-de-tentativa-não-paga).
+tentativa na completa, e no nível 3 chega a piorar 0,010 tentativa por 8× a CPU.
+Ficou como resultado, não como recomendação; os números estão em
+[Ampliar o espaço de tentativa não paga](#ampliar-o-espaço-de-tentativa-não-paga).
 
 O nível 3 também estava nesta lista (§12) e saiu dela: está implementado em
 [`termo/nivel3.py`](termo/nivel3.py) e **é o padrão da CLI**. O motivo da
