@@ -426,7 +426,7 @@ class MotorNivel3:
                 sugestao.valor_esperado = self.valor(candidatas, rodadas)
             return sugestao
 
-        palavras = self.lexico.exibicao
+        palavras = self.lexico.sondas_exibicao  # a jogada sai do espaço de sonda
         palpites = self._palpites(candidatas, self.beam)
         # Uma varredura a mais, só na raiz, para relatar os bits da jogada
         # escolhida — irrelevante perto das centenas de nós da árvore.
@@ -491,11 +491,19 @@ class MotorNivel3:
         definem o objetivo: mexer neles muda o valor de toda a árvore, e uma
         abertura calculada sob o objetivo antigo não vale mais nada. O `B` fecha o
         resto — é a assinatura do próprio algoritmo (ver `assinatura_busca`).
+
+        O espaço de tentativa entra pelo mesmo motivo, e só no modo ampliado: as
+        entradas já versionadas custaram 16 min cada e não podem ser invalidadas
+        por uma opção que ninguém pediu.
         """
+        sondas = (
+            "" if self.motor.n_sondas == len(self.lexico)
+            else f";S={self.motor.n_sondas}"
+        )
         return (
             f"T={self.lexico.temperatura};K={self.beam};P={self.profundidade}"
             f";D={PENALIDADE_DERROTA:g};R={self.motor.n_max_tentativas}"
-            f";B={assinatura_busca()}"
+            f";B={assinatura_busca()}{sondas}"
         )
 
     def _abertura_guardada(self) -> tuple[dict, dict | None]:

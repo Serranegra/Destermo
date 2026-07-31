@@ -234,6 +234,18 @@ python solver.py --t 2
 python solver.py --t inf
 ```
 
+Para deixar o solver sondar com palavras que o Termo aceita mas nunca sorteia
+(conjugações verbais — 8.628 palavras jogáveis contra as mesmas 6.046 respostas
+possíveis):
+
+```bash
+python solver.py --ampliado
+```
+
+Na primeira vez ele baixa o arquivo `conjugações` da fonte e monta uma matriz de
+padrões própria (~10 s). Não espere ganho: [a medição está abaixo](#ampliar-o-espaço-de-tentativa-não-paga)
+e deu zero.
+
 **Atenção ao combinar `--t` com o nível 3.** Só a configuração padrão
 (`T=1, beam=10, profundidade=1`) vem com a abertura pronta em
 `data/aberturas_nivel3.json`; qualquer outra é uma busca a partir das 6.046
@@ -269,6 +281,10 @@ python benchmark.py --catalogo
 ```
 
 ```bash
+python benchmark.py --ampliado
+```
+
+```bash
 python -m termo.robustez
 ```
 
@@ -291,7 +307,7 @@ página web não exige mexer em nada dentro de `termo/`.
 |---|---|
 | `termo/feedback.py` | Normalização de acentos, regra das duas passadas, codificação base-3, detector de padrão impossível |
 | `termo/lexico.py` | Download, filtro de 5 caracteres, agrupamento por forma normalizada, dedupe por ICF, prior |
-| `termo/matriz.py` | Matriz 6.046 × 6.046 de padrões pré-computados (numpy vetorizado) |
+| `termo/matriz.py` | Matriz 6.046 × 6.046 de padrões pré-computados (numpy vetorizado); 8.628 × 6.046 com `--ampliado` |
 | `termo/entropia.py` | Cálculo de entropia, regra de endgame, cache da abertura (nível 2) |
 | `termo/nivel3.py` | Busca na árvore de decisão pelo menor nº esperado de tentativas (nível 3) |
 | `termo/robustez.py` | Número efetivo de palavras (M = 2^H) e minimax de arrependimento sobre a distribuição desconhecida |
@@ -304,6 +320,12 @@ Cada palavra tem duas formas (§2.4): a **normalizada** (`terco`), usada em todo
 cálculo, e a de **exibição** (`terço`), puramente cosmética. O léxico final fica
 em `termo_lexico_5letras.txt` na forma acentuada; `data/` guarda as fontes
 baixadas e os artefatos gerados.
+
+Dois espaços de índice convivem no motor: as **candidatas** (o que pode ser a
+secreta) e as **sondas** (o que pode ser digitado). No modo padrão são o mesmo
+conjunto; com `--ampliado` as sondas viram um superconjunto que tem as candidatas
+no prefixo — é isso que deixa todo índice de candidata continuar valendo, e o
+acréscimo fica em `termo_sondas_extra.txt`.
 
 ---
 
@@ -749,6 +771,45 @@ O mínimo cai exatamente em **T = 1**, o valor padrão da v1. A curva é rasa en
 piora de verdade em T→∞. Ou seja: **ter um prior importa; calibrá-lo com precisão,
 nem tanto.**
 
+### Ampliar o espaço de tentativa não paga
+
+O Termo aceita como tentativa palavras que nunca sorteia como resposta — as
+conjugações verbais que a curadoria removeu. Nada obriga um palpite a poder ser a
+resposta: ele só precisa separar bem. Somando as formas de 5 letras do arquivo
+`conjugações` que ainda não estavam no léxico, o solver passa a ter **8.628
+palavras jogáveis contra as mesmas 6.046 respostas possíveis** (`--ampliado`).
+
+Sob o mesmo critério, mais opções não podem baixar a entropia máxima de jogada
+nenhuma. E não baixam: num varredura de 60 estados de meio de jogo, a melhor
+sonda é uma conjugação em 24 deles. Só que o ganho é de **0,034 bit em média**, e
+a abertura nem muda — `tarso` continua ótima entre as 8.628.
+
+Bits não são tentativas (§4.1), então o que decide é jogar:
+
+| Espaço de tentativa | Bateria | Média | Penalizada | Derrotas | ms/jogo |
+|---|---|---|---|---|---|
+| 6.046 | realista (1.500) | 3,5807 | 3,5807 | 0 | 3,33 |
+| 8.628 | realista (1.500) | 3,5807 | 3,5807 | 0 | 5,13 |
+| 6.046 | completo (6.046) | 3,9464 | 3,9570 | 21 | 0,96 |
+| 8.628 | completo (6.046) | 3,9400 | 3,9486 | 17 | 1,23 |
+
+Na bateria realista a diferença é **exatamente zero** — não "dentro do ruído":
+zero, nas duas casas que o benchmark reporta. A distribuição chega a se mexer (6
+partidas migram de 4 para 3 tentativas, 6 outras vão de 4 para 5), e o saldo
+cancela.
+
+Na bateria completa, que é enumeração exaustiva e não amostra, ampliar ganha
+**0,0084 tentativa** e converte 4 derrotas em vitórias — 21 para 17. O ganho é
+real, e é todo em palavras como `gueja`, `riçar` e `bimar`, que o Termo não
+sorteia. Custa 28% de CPU por jogada e uma segunda matriz de 52 MB.
+
+A conclusão é que a separação formal entre as duas listas — que a especificação
+pôs fora de escopo (§12) — **estava certa em ficar fora**, mas por um motivo que
+só se sabe medindo. Não é que sondar com conjugação seja ruim; é que o léxico de
+6.046 já é grande o bastante para conter, para quase todo estado, uma palavra tão
+informativa quanto a melhor conjugação. O `--ampliado` fica como opção porque a
+medição é o resultado, não porque o modo valha a pena.
+
 ### Nível 2 → nível 3: o proxy contra o objetivo real
 
 A especificação pôs o nível 3 fora de escopo por custo computacional (§4.1). Ele
@@ -947,6 +1008,11 @@ si próprio. O critério implementado é o da especificação (a fonte), e o tes
 `test_conjugacoes_foram_excluidas` documenta essa distinção para não induzir a
 erro depois.
 
+As formas que a v1.1 remove não sumiram do projeto: elas voltam como *sondas* em
+`--ampliado`, onde servem de tentativa sem poder ser resposta. O que ganham (nada
+na bateria realista) está em
+[Ampliar o espaço de tentativa não paga](#ampliar-o-espaço-de-tentativa-não-paga).
+
 ### A regra de endgame da penúltima tentativa é conservadora
 
 A especificação (§4.5) manda chutar uma candidata na penúltima tentativa quando
@@ -982,9 +1048,9 @@ artefatos correm esse risco, e cada um se protege pela assinatura da sua entrada
 
 | artefato | assinatura | custo se passar batido |
 |---|---|---|
-| `data/matriz_padroes.npy` | sha256 da lista de palavras | resultados errados |
+| `data/matriz_padroes.npy` | sha256 das listas de sondas e de candidatas | resultados errados |
 | `termo_lexico_5letras.txt` | rejeita formas normalizadas repetidas | solver trava ao convergir |
-| `data/aberturas_nivel3.json` | T, beam, profundidade, objetivo **e o algoritmo** | abertura errada, calada |
+| `data/aberturas_nivel3.json` | T, beam, profundidade, objetivo, espaço de tentativa **e o algoritmo** | abertura errada, calada |
 
 O primeiro já vinha da especificação. O segundo não tinha proteção nenhuma:
 `carregar_exibicao` agora rejeita qualquer lista com formas normalizadas
@@ -1002,6 +1068,15 @@ invalida os 9 min em cache; reescrever um comentário ou reformatar, não. Renom
 uma variável invalida também — é falso positivo, mas do lado seguro: recalcular à
 toa custa tempo, publicar uma abertura errada custa credibilidade.
 
+O falso positivo aconteceu, e valeu o preço. O trabalho de separar candidatas de
+sondas (`--ampliado`) trocou `self.lexico.exibicao` por `self.lexico.sondas_exibicao`
+em `escolher` e o prior por um vetor mais longo em `ordenar_por_entropia` —
+nenhuma das duas muda nada no modo padrão, e as duas mudam o AST. A assinatura
+virou de `33e7f34e` para `bc195eae` e cobrou os 9 min. O recálculo devolveu
+`tosar` com `E = 3,0094161967` e as mesmas cinco alternativas na mesma ordem: o
+guard cobrou por uma mudança que não era, e em troca provou que o refactor era
+neutro justamente onde é mais caro verificar isso à mão.
+
 `Motor.entropias` fica de fora do hash de propósito. Ela tem oráculo — os testes
 a comparam com uma referência escrita à mão e com o caminho alternativo —, então
 uma mudança de valor lá é ruidosa, não silenciosa; e é justamente a função que se
@@ -1010,8 +1085,13 @@ resultado nenhum. **Hash para o que não tem oráculo, teste para o que tem.**
 
 ## Fora de escopo (v1)
 
-Dueto e Quarteto; curadoria manual adicional do léxico; interface web/bot/API;
-separação formal entre lista de respostas e lista de tentativas válidas.
+Dueto e Quarteto; curadoria manual adicional do léxico; interface web/bot/API.
+
+A separação entre lista de respostas e lista de tentativas válidas também estava
+aqui, e saiu pela porta dos fundos: está implementada (`--ampliado`), mas a
+medição diz que **não vale a pena** — zero de ganho na bateria realista, 0,008
+tentativa na completa. Ficou como resultado, não como recomendação; os números
+estão em [Ampliar o espaço de tentativa não paga](#ampliar-o-espaço-de-tentativa-não-paga).
 
 O nível 3 também estava nesta lista (§12) e saiu dela: está implementado em
 [`termo/nivel3.py`](termo/nivel3.py) e **é o padrão da CLI**. O motivo da

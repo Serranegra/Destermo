@@ -17,8 +17,11 @@ CLAUDE.md
 # As fontes vêm de github.com/fserb/pt-br; a matriz leva ~4 s para reconstruir.
 data/icf.txt
 data/lexico.txt
+data/conjugacoes.txt
 data/matriz_padroes.npy
 data/matriz_padroes.json
+data/matriz_padroes_sondas.npy
+data/matriz_padroes_sondas.json
 
 # A grade de robustez leva ~8 min, mas não vai versionada: diferente das
 # aberturas abaixo, ela não é preciso para JOGAR — só para reproduzir uma tabela

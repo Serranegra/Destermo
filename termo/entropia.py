@@ -9,6 +9,12 @@ pelos padrões de feedback que `g` produziria, pesando cada candidata pelo prior
 Escolhe-se o `g` de maior H. O espaço de tentativas é o léxico completo — não só
 as candidatas restantes —, o que permite "queimar" uma jogada numa palavra
 improvável mas muito informativa. O prior entra apenas no peso das candidatas.
+
+Com `Lexico.carregar(ampliado=True)` esse espaço cresce para as 8.628 sondas
+(§2.5): as conjugações não podem ser a resposta, mas podem ser digitadas, e como
+o prior delas é 0 elas nunca competem com uma candidata em caso de empate. As
+linhas da matriz são o espaço de sonda; as colunas, o de candidata. Nada mais no
+módulo muda — `candidatas` continua sendo índice de coluna.
 """
 
 from __future__ import annotations
@@ -38,6 +44,15 @@ EPSILON_EMPATE = 1e-9
 LIMIAR_POUCAS = 12
 
 N_MAX_TENTATIVAS = 6
+
+
+def _alinhar(prior: np.ndarray, n: int) -> np.ndarray:
+    """Prior no tamanho exato do espaço de tentativa, completando com zeros."""
+    if len(prior) == n:
+        return prior
+    if len(prior) > n:
+        return prior[:n]
+    return np.concatenate([prior, np.zeros(n - len(prior), dtype=prior.dtype)])
 
 
 @dataclass
@@ -72,7 +87,16 @@ class Motor:
         n_max_tentativas: int = N_MAX_TENTATIVAS,
     ):
         self.lexico = lexico
-        self.matriz = carregar_matriz(lexico.palavras) if matriz is None else matriz
+        self.matriz = (
+            carregar_matriz(lexico.sondas, lexico.palavras)
+            if matriz is None
+            else matriz
+        )
+        # Linhas da matriz = espaço de tentativa. Num motor montado com uma matriz
+        # de recorte (os testes fazem isso), é ela que manda, não o léxico — daí o
+        # prior de sondas ser realinhado a ela em vez de assumido do tamanho certo.
+        self.n_sondas = self.matriz.shape[0]
+        self.prior_sondas = _alinhar(lexico.prior_sondas, self.n_sondas)
         self.limiar_endgame = limiar_endgame
         self.n_max_tentativas = n_max_tentativas
         self._cache_escolha: dict[bytes, Sugestao] = {}
@@ -90,7 +114,9 @@ class Motor:
         Reutiliza exatamente a mesma função de feedback usada em todo o resto —
         não há uma segunda lógica de filtragem por regras (seção 4.4).
         """
-        indice = self.lexico.indice.get(normalizar(tentativa))
+        # A linha da matriz é o espaço de SONDA: uma conjugação jogada no modo
+        # ampliado tem linha pronta e não cai no caminho lento abaixo.
+        indice = self.lexico.indice_sonda.get(normalizar(tentativa))
         if indice is not None:
             codigos = self.matriz[indice, candidatas]
         else:
@@ -103,8 +129,8 @@ class Motor:
     # -------------------------------------------------------------- entropia
 
     def entropias(self, candidatas: np.ndarray) -> np.ndarray:
-        """Entropia (em bits) de cada palavra do léxico como próxima tentativa."""
-        n = len(self.lexico)
+        """Entropia (em bits) de cada sonda como próxima tentativa."""
+        n = self.n_sondas
         m = len(candidatas)
         if m <= 1:
             return np.zeros(n, dtype=np.float64)
@@ -184,17 +210,20 @@ class Motor:
 
         O desempate por "também é candidata" é ganho grátis: entre duas palavras
         que separam igualmente bem, a que pode ser a resposta tem chance não-nula
-        de encerrar o jogo (seção 4.5).
+        de encerrar o jogo (seção 4.5). É também o que segura o espaço ampliado no
+        lugar: uma conjugação só é escolhida quando separa ESTRITAMENTE melhor que
+        qualquer palavra do léxico — no empate ela perde nas duas chaves, porque
+        não é candidata e tem prior 0.
 
         Pública porque o nível 3 (`termo/nivel3.py`) usa esta mesma ordem como
         "move ordering" da busca: os primeiros da lista são os candidatos a jogada
         ótima e os que mais ajudam a poda.
         """
-        e_candidata = np.zeros(len(self.lexico), dtype=bool)
+        e_candidata = np.zeros(self.n_sondas, dtype=bool)
         e_candidata[candidatas] = True
         arredondada = np.round(entropias / EPSILON_EMPATE) * EPSILON_EMPATE
         # lexsort: a última chave é a primária.
-        return np.lexsort((-self.lexico.prior, ~e_candidata, -arredondada))
+        return np.lexsort((-self.prior_sondas, ~e_candidata, -arredondada))
 
     def escolher(
         self, candidatas: np.ndarray, tentativa: int = 1, n_alternativas: int = 3
@@ -204,7 +233,9 @@ class Motor:
         if m == 0:
             raise ValueError("conjunto de candidatas vazio")
 
-        palavras = self.lexico.exibicao  # o usuário vê a forma acentuada
+        # O usuário vê a forma acentuada. Indexado pelo espaço de SONDA, que é o
+        # de onde sai a jogada — as candidatas são o prefixo dele.
+        palavras = self.lexico.sondas_exibicao
 
         if m == 1:
             i = int(candidatas[0])
@@ -251,7 +282,7 @@ class Motor:
             melhor,
             palavras[melhor],
             float(entropias[melhor]),
-            f"maior entropia entre as {len(palavras)} palavras do léxico "
+            f"maior entropia entre as {self.n_sondas} palavras jogáveis "
             f"({m} candidatas restantes)",
             melhor in conjunto,
             alternativas,
@@ -279,9 +310,16 @@ class Motor:
         """Melhor primeira jogada. Não depende de feedback nenhum, então é fixa.
 
         Calculada uma vez e guardada em disco: é de longe a conta mais cara do
-        uso diário (8.996 x 8.996 partições).
+        uso diário (a matriz inteira particionada contra as 6.046 candidatas).
+
+        O espaço de tentativa entra na chave do cache porque é exatamente o que a
+        conta varre: a abertura das 6.046 e a das 8.628 são respostas a perguntas
+        diferentes e não podem se sobrescrever no arquivo. O sufixo só aparece no
+        modo ampliado — assim as entradas já versionadas continuam valendo.
         """
         chave = f"T={self.lexico.temperatura}"
+        if self.n_sondas != len(self.lexico):
+            chave += f";S={self.n_sondas}"
         cache: dict = {}
         if usar_cache and ARQ_ABERTURA.exists():
             cache = json.loads(ARQ_ABERTURA.read_text(encoding="utf-8"))
@@ -312,9 +350,11 @@ class Motor:
         return sugestao
 
 
-def carregar_motor(temperatura: float = 1.0, **kwargs) -> Motor:
+def carregar_motor(
+    temperatura: float = 1.0, ampliado: bool = False, **kwargs
+) -> Motor:
     """Atalho: léxico + matriz + motor prontos para uso."""
-    return Motor(Lexico.carregar(temperatura), **kwargs)
+    return Motor(Lexico.carregar(temperatura, ampliado), **kwargs)
 
 
 if __name__ == "__main__":

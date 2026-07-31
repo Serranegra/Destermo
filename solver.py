@@ -8,6 +8,7 @@ por um bot, uma API ou uma página web não exige mexer no motor (seção 7.4).
     python solver.py --nivel 2  # só entropia: milissegundos por jogada
     python solver.py --t 5      # outra temperatura do prior
     python solver.py --t inf    # entropia pura, sem prior de frequência
+    python solver.py --ampliado # deixa sondar com conjugações (§2.5)
 
 O padrão é o nível 3 (§4.1): ele minimiza o número esperado de tentativas em vez
 de maximizar bits, o que vale 0,54 tentativa na bateria realista. A abertura dele
@@ -129,7 +130,7 @@ def ler_tentativa(motor: Cerebro, candidatas: np.ndarray, rodada: int) -> str:
         if len(tentativa) != 5:
             print("  ! a tentativa precisa ter 5 letras")
             continue
-        if tentativa not in motor.lexico.indice:
+        if tentativa not in motor.lexico.indice_sonda:
             # Seção 7.3: avisar, mas permitir — o Termo aceita palavras que não temos.
             print("  ! essa palavra não está no nosso léxico (seguindo mesmo assim)")
         return tentativa
@@ -165,8 +166,8 @@ AVISO_SEM_CANDIDATAS = """
 
 
 def rotular(motor: Cerebro, tentativa: str) -> str:
-    """Forma acentuada da tentativa, quando ela está no léxico."""
-    indice = motor.lexico.indice.get(tentativa)
+    """Forma acentuada da tentativa, quando ela é uma palavra que conhecemos."""
+    indice = motor.lexico.indice_sonda.get(tentativa)
     return motor.lexico.mostrar(indice) if indice is not None else tentativa
 
 
@@ -246,11 +247,16 @@ def main() -> None:
         "--profundidade", type=int, default=PROFUNDIDADE,
         help=f"nível 3: níveis de busca abaixo da raiz (padrão {PROFUNDIDADE})",
     )
+    analisador.add_argument(
+        "--ampliado", action="store_true",
+        help="permite sondar com conjugações (8.628 palavras jogáveis, 6.046 "
+             "respostas possíveis); baixa e processa a fonte na primeira vez",
+    )
     argumentos = analisador.parse_args()
     bruto = argumentos.temperatura.lower()
     temperatura = math.inf if bruto in ("inf", "infinito") else float(bruto)
 
-    lexico = Lexico.carregar(temperatura)
+    lexico = Lexico.carregar(temperatura, argumentos.ampliado)
     motor: Cerebro = Motor(lexico)
     if argumentos.nivel == 3:
         motor = MotorNivel3(motor, argumentos.beam, argumentos.profundidade)
@@ -263,7 +269,12 @@ def main() -> None:
         if argumentos.nivel == 3
         else ""
     )
-    print(f"léxico: {len(lexico)} palavras   T={temperatura}{busca}")
+    espaco = (
+        f"{len(lexico)} respostas, {lexico.n_sondas} jogáveis"
+        if lexico.ampliado
+        else f"{len(lexico)} palavras"
+    )
+    print(f"léxico: {espaco}   T={temperatura}{busca}")
     jogar(motor)
 
 

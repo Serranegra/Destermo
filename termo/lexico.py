@@ -7,8 +7,17 @@ Fonte: https://github.com/fserb/pt-br (licença MIT), do criador do Termo.
   manter de cada grupo a variante de menor ICF -> LÉXICO FINAL de 6.046 palavras
   icf     419.486 palavras com Inverse Corpus Frequency (prior e desempate)
 
-O arquivo `conjugações` NÃO é usado: a curadoria oficial do Termo removeu as
-formas verbais.
+O arquivo `conjugações` não entra no léxico: a curadoria oficial do Termo removeu
+as formas verbais, então nenhuma delas pode ser a secreta. Mas o Termo as ACEITA
+como tentativa, e uma tentativa não precisa poder ser a resposta para ser útil —
+só precisa separar bem. Daí a distinção de dois espaços (§2.5):
+
+  candidatas  6.046  o que pode ser a secreta; é sobre elas que se filtra
+  sondas      8.628  o que se pode digitar; as 6.046 mais 2.582 conjugações
+
+As sondas são um SUPERCONJUNTO com as candidatas no prefixo, na mesma ordem, de
+modo que todo índice de candidata continua valendo no espaço ampliado. Sem
+`ampliado=True` os dois espaços são o mesmo objeto e nada muda.
 
 Cada palavra tem duas formas (§2.4):
 
@@ -25,7 +34,7 @@ import re
 import urllib.parse
 import urllib.request
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
@@ -36,12 +45,16 @@ RAIZ = Path(__file__).resolve().parents[1]
 DIR_DADOS = RAIZ / "data"
 
 ARQ_LEXICO_FINAL = RAIZ / "termo_lexico_5letras.txt"
+ARQ_SONDAS_EXTRA = RAIZ / "termo_sondas_extra.txt"
 
 URL_BASE = "https://raw.githubusercontent.com/fserb/pt-br/master/"
 FONTES = {
     "lexico.txt": "lexico",
     "icf.txt": "icf",
 }
+# Baixado sob demanda, só por quem pede o espaço ampliado: são 2,2 MB que não
+# servem para nada no modo padrão.
+FONTES_SONDAS = {"conjugacoes.txt": "conjugações"}
 
 TAMANHO = 5
 # a-z mais o bloco latin-1 acentuado, excluindo o '÷' (U+00F7) que cai no meio da faixa.
@@ -54,10 +67,12 @@ T_PADRAO = 1.0
 # ---------------------------------------------------------------- download
 
 
-def garantir_fontes(dir_dados: Path = DIR_DADOS) -> None:
+def garantir_fontes(
+    dir_dados: Path = DIR_DADOS, fontes: dict[str, str] = FONTES
+) -> None:
     """Baixa os arquivos do repositório fserb/pt-br que ainda não existem."""
     dir_dados.mkdir(parents=True, exist_ok=True)
-    for local, remoto in FONTES.items():
+    for local, remoto in fontes.items():
         destino = dir_dados / local
         if destino.exists() and destino.stat().st_size > 0:
             continue
@@ -87,6 +102,16 @@ def _tabela_icf(dir_dados: Path = DIR_DADOS) -> dict[str, float]:
 # ---------------------------------------------------------------- construção
 
 
+def _cinco_caracteres(caminho: Path) -> set[str]:
+    """Palavras de exatamente 5 caracteres de um arquivo da fonte."""
+    return {
+        palavra
+        for bruta in _ler_linhas(caminho)
+        for palavra in (bruta.lower(),)
+        if len(palavra) == TAMANHO and _PALAVRA_VALIDA.fullmatch(palavra)
+    }
+
+
 def construir_lexico(dir_dados: Path = DIR_DADOS, salvar: bool = True) -> list[str]:
     """Reconstrói a lista final a partir da fonte. Devolve as formas de exibição.
 
@@ -96,12 +121,7 @@ def construir_lexico(dir_dados: Path = DIR_DADOS, salvar: bool = True) -> list[s
     """
     garantir_fontes(dir_dados)
 
-    cinco = {
-        palavra
-        for bruta in _ler_linhas(dir_dados / "lexico.txt")
-        for palavra in (bruta.lower(),)
-        if len(palavra) == TAMANHO and _PALAVRA_VALIDA.fullmatch(palavra)
-    }
+    cinco = _cinco_caracteres(dir_dados / "lexico.txt")
 
     icf = _tabela_icf(dir_dados)
     ausente = max(icf.values()) + 1.0
@@ -145,6 +165,57 @@ def carregar_exibicao(caminho: Path = ARQ_LEXICO_FINAL) -> list[str]:
     return palavras
 
 
+# ---------------------------------------------------------------- sondas
+
+
+def construir_sondas(dir_dados: Path = DIR_DADOS, salvar: bool = True) -> list[str]:
+    """Palavras de 5 letras que servem de sonda mas nunca de resposta (§2.5).
+
+    Mesma fonte e mesmos filtros do léxico, aplicados ao arquivo `conjugações`.
+    Duas diferenças de propósito em relação a `construir_lexico`:
+
+      - o que já existe no léxico é descartado; o resultado é só o ACRÉSCIMO
+      - a dedupe por forma normalizada continua (duas variantes acentuadas são a
+        mesma sonda), mas o critério de ICF aqui só escolhe qual acentuação
+        mostrar — nenhuma delas jamais entra numa conta.
+    """
+    garantir_fontes(dir_dados, FONTES_SONDAS)
+    conhecidas = {normalizar(palavra) for palavra in carregar_exibicao()}
+
+    grupos: dict[str, list[str]] = defaultdict(list)
+    for palavra in _cinco_caracteres(dir_dados / "conjugacoes.txt"):
+        chave = normalizar(palavra)
+        if chave not in conhecidas:
+            grupos[chave].append(palavra)
+
+    icf = _tabela_icf(dir_dados)
+    ausente = max(icf.values()) + 1.0
+    extras = [
+        min(sorted(variantes), key=lambda p: icf.get(p, ausente))
+        for _, variantes in sorted(grupos.items())
+    ]
+
+    print(
+        f"conjugações: {len(conhecidas)} já no léxico  "
+        f"+{len(extras)} sondas novas  -> espaço de tentativa "
+        f"{len(conhecidas) + len(extras)}"
+    )
+    if salvar:
+        ARQ_SONDAS_EXTRA.write_text("\n".join(extras) + "\n", encoding="utf-8")
+    return extras
+
+
+def carregar_sondas_extra(caminho: Path = ARQ_SONDAS_EXTRA) -> list[str]:
+    """Lê o acréscimo de sondas (formas acentuadas); reconstrói se ausente."""
+    if not caminho.exists():
+        return construir_sondas()
+    extras = [linha for linha in _ler_linhas(caminho) if linha]
+    invalidas = [p for p in extras if not _PALAVRA_VALIDA.fullmatch(p)]
+    if invalidas:
+        raise ValueError(f"sondas inválidas: {invalidas[:5]}")
+    return extras
+
+
 # ---------------------------------------------------------------- ICF / prior
 
 
@@ -185,7 +256,19 @@ def calcular_prior(icf: np.ndarray, temperatura: float = T_PADRAO) -> np.ndarray
 
 @dataclass
 class Lexico:
-    """Léxico carregado: formas normalizada e de exibição, ICF e prior."""
+    """Léxico carregado: formas normalizada e de exibição, ICF e prior.
+
+    Dois espaços de índice convivem aqui (§2.5), e a relação entre eles é o que
+    faz o resto do motor não precisar saber da diferença:
+
+      0 .. len(palavras)-1   CANDIDATAS: podem ser a secreta; têm ICF e prior
+      0 .. len(sondas)-1     SONDAS: podem ser digitadas; começam pelas candidatas
+
+    Como as candidatas são o PREFIXO das sondas, todo índice de candidata é um
+    índice de sonda válido e com o mesmo significado. Os campos de sonda ficam
+    com default: quem constrói um `Lexico` sem eles — o benchmark monta mundos
+    restritos assim — cai no caso em que os dois espaços coincidem.
+    """
 
     palavras: list[str]       # formas normalizadas — o motor só usa estas
     exibicao: list[str]       # formas acentuadas — só para mostrar ao usuário
@@ -193,13 +276,54 @@ class Lexico:
     ausentes_no_icf: list[str]
     temperatura: float
     prior: np.ndarray
-    indice: dict[str, int]    # forma normalizada -> posição
+    indice: dict[str, int]    # forma normalizada -> posição (só candidatas)
+
+    sondas: list[str] = field(default_factory=list)           # normalizadas
+    sondas_exibicao: list[str] = field(default_factory=list)  # acentuadas
+    indice_sonda: dict[str, int] = field(default_factory=dict)
+    prior_sondas: np.ndarray | None = None
+
+    def __post_init__(self) -> None:
+        if not self.sondas:
+            # Sem espaço ampliado os dois são o mesmo objeto — não uma cópia, para
+            # que `carregar_matriz` reconheça a matriz quadrada de sempre.
+            self.sondas = self.palavras
+            self.sondas_exibicao = self.exibicao
+            self.indice_sonda = self.indice
+        if self.prior_sondas is None:
+            self.prior_sondas = self._espalhar_prior(self.prior)
+
+    def _espalhar_prior(self, prior: np.ndarray) -> np.ndarray:
+        """Prior no espaço de sondas: 0 para o que não pode ser a secreta.
+
+        Não é um chute de frequência — é a verdade. Uma conjugação tem
+        probabilidade zero de ser a palavra do dia. O valor só entra como
+        desempate de última instância em `ordenar_por_entropia`, onde zerar
+        significa "entre duas sondas que separam igual, prefira a que ainda pode
+        encerrar o jogo".
+        """
+        extras = len(self.sondas) - len(prior)
+        if extras <= 0:
+            return prior
+        return np.concatenate([prior, np.zeros(extras, dtype=prior.dtype)])
 
     @classmethod
-    def carregar(cls, temperatura: float = T_PADRAO) -> "Lexico":
+    def carregar(cls, temperatura: float = T_PADRAO, ampliado: bool = False) -> "Lexico":
         exibicao = carregar_exibicao()
         icf, ausentes = carregar_icf(exibicao)
         palavras = [normalizar(p) for p in exibicao]
+        indice = {p: i for i, p in enumerate(palavras)}
+
+        sondas_exibicao: list[str] = []
+        sondas: list[str] = []
+        indice_sonda: dict[str, int] = {}
+        if ampliado:
+            sondas_exibicao = exibicao + carregar_sondas_extra()
+            sondas = [normalizar(p) for p in sondas_exibicao]
+            indice_sonda = {p: i for i, p in enumerate(sondas)}
+            if len(indice_sonda) != len(sondas):
+                raise ValueError("o acréscimo de sondas colide com o léxico")
+
         return cls(
             palavras=palavras,
             exibicao=exibicao,
@@ -207,11 +331,15 @@ class Lexico:
             ausentes_no_icf=ausentes,
             temperatura=temperatura,
             prior=calcular_prior(icf, temperatura),
-            indice={p: i for i, p in enumerate(palavras)},
+            indice=indice,
+            sondas=sondas,
+            sondas_exibicao=sondas_exibicao,
+            indice_sonda=indice_sonda,
         )
 
     def com_temperatura(self, temperatura: float) -> "Lexico":
         """Cópia com outro T (recalcula só o prior — o resto é compartilhado)."""
+        ampliado = self.sondas is not self.palavras
         return Lexico(
             palavras=self.palavras,
             exibicao=self.exibicao,
@@ -220,22 +348,41 @@ class Lexico:
             temperatura=temperatura,
             prior=calcular_prior(self.icf, temperatura),
             indice=self.indice,
+            sondas=self.sondas if ampliado else [],
+            sondas_exibicao=self.sondas_exibicao if ampliado else [],
+            indice_sonda=self.indice_sonda if ampliado else {},
         )
 
     def __len__(self) -> int:
         return len(self.palavras)
 
+    @property
+    def n_sondas(self) -> int:
+        """Tamanho do espaço de tentativa — o que a matriz tem de linhas."""
+        return len(self.sondas)
+
+    @property
+    def ampliado(self) -> bool:
+        return self.n_sondas > len(self.palavras)
+
     def indice_de(self, palavra: str) -> int:
-        """Aceita a palavra com ou sem acento."""
+        """Índice no espaço de SONDAS. Aceita a palavra com ou sem acento.
+
+        É o espaço certo para quem quer jogar uma palavra: o de candidatas é um
+        prefixo dele, então uma resposta possível devolve o mesmo índice de antes.
+        """
         chave = normalizar(palavra)
         try:
-            return self.indice[chave]
+            return self.indice_sonda[chave]
         except KeyError:
             raise KeyError(f"{palavra!r} não está no léxico") from None
 
+    def e_candidata(self, indice: int) -> bool:
+        return indice < len(self.palavras)
+
     def mostrar(self, indice: int) -> str:
         """Forma acentuada, que é a que o jogador vê na tela do jogo (§7.2)."""
-        return self.exibicao[indice]
+        return self.sondas_exibicao[indice]
 
     def mais_comuns(self, n: int) -> np.ndarray:
         """Índices das n palavras de menor ICF (as mais comuns)."""
