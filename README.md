@@ -860,6 +860,48 @@ separar:
 
 A abertura do nível 2 continua sendo `tarso` nas duas versões.
 
+### Afinal, qual é a palavra ótima?
+
+A pergunta que abre o projeto merece uma resposta fechada, e ela tem duas
+partes.
+
+**Se você quer uma palavra para digitar amanhã: `tarso`.** Ela é a única que
+ganha dos dois lados da investigação — é a abertura do nível 2 sob o prior do
+projeto (5,975 bits, a maior do léxico) **e** empata em primeiro no minimax de
+arrependimento sobre sete distribuições, de "lista bem curada" a uniforme. Todas
+as outras candidatas vencem num regime e perdem no outro: `tosar` é melhor se o
+prior de T=1 estiver certo e o dobro de pior se não estiver; `serão` só é ótima
+se a lista de respostas tiver ~300 palavras, e é a menos robusta das oito;
+`sertã` supera `tarso` por 0,0007 tentativa, que uma coluna da grade decide.
+
+Quem confia no prior do projeto joga `tosar`, que é o que a CLI sugere e o que
+minimiza E[tentativas] sob a premissa declarada. `tarso` é a escolha de quem
+prefere não apostar nela. A tabela de [Para escolher uma na
+prática](#para-escolher-uma-na-prática) abre os outros casos.
+
+**A segunda parte da resposta é mais útil que a primeira: a abertura vale
+pouco.** O pior arrependimento entre as oito candidatas testadas é 0,069
+tentativa. Ao lado das outras decisões deste README:
+
+| decisão | vale |
+|---|---|
+| nível 1 → nível 2 — letras para entropia | **0,59 tentativa** |
+| nível 2 → nível 3 — bits para tentativas | **0,54 tentativa** |
+| o prior de frequência (T=1 contra T→∞) | **0,31 tentativa** |
+| escolher bem a abertura | **≤ 0,07 tentativa** |
+
+Cada linha é uma diferença medida *dentro* de uma bateria — as duas primeiras
+saem de baterias diferentes (1.500 e 300 palavras) e os valores absolutos delas
+não se comparam entre si, como avisado lá em cima. As diferenças, sim: é sempre
+a mesma bateria antes e depois da mudança.
+
+Uma ordem de grandeza separa as duas coisas. O debate dos fóruns — e boa parte
+das seções acima — é sobre a variável menos importante do jogo: o que decide
+partidas é a política da segunda jogada em diante, não a primeira. É também por
+isso que nada no solver mudou depois de tudo isto. `tarso` e `tosar` seguem sendo
+as aberturas dos níveis 2 e 3; o que se ganhou foi saber **quanto** essa escolha
+depende de uma premissa que ninguém pode verificar — e a resposta é: pouco.
+
 ---
 
 ## Achados e desvios da especificação
