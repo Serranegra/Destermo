@@ -20,6 +20,15 @@ data/lexico.txt
 data/matriz_padroes.npy
 data/matriz_padroes.json
 
+# A grade de robustez leva ~8 min, mas não vai versionada: diferente das
+# aberturas abaixo, ela não é preciso para JOGAR — só para reproduzir uma tabela
+# do README, e a assinatura em `assinatura_robustez` a regenera sozinha.
+data/robustez.json
+
+# Registro das secretas já sorteadas, se alguém trouxer um: é dado de fora,
+# não artefato do projeto (ver `piso_empirico` em termo/robustez.py).
+data/secretas_sorteadas.txt
+
 # data/aberturas.json FICA versionado: é a conta mais cara do uso diário
 # (partições do léxico inteiro contra si mesmo) e não muda a não ser que o
 # léxico ou o ICF mudem — não faz sentido recalcular a cada checkout.

@@ -385,6 +385,19 @@ class MotorNivel3:
         """
         return self.valor(candidatas, rodadas, profundidade=-1)
 
+    def valor_com_abertura(
+        self, palpite: int, candidatas: np.ndarray, rodadas: int | None = None
+    ) -> float:
+        """E[tentativas] jogando `palpite` agora e seguindo o nível 2 depois.
+
+        Complemento de `valor_guloso`, que deixa a própria política escolher a
+        primeira jogada. Aqui ela é imposta, que é o que permite comparar
+        aberturas ENTRE SI sob a mesma política e o mesmo prior — e é exato, não
+        uma média de simulação: a esperança é sobre o prior, palavra a palavra.
+        """
+        rodadas = self.motor.n_max_tentativas if rodadas is None else rodadas
+        return self._custo(int(palpite), np.asarray(candidatas), rodadas - 1, 0)
+
     # --------------------------------------------------------------- escolha
 
     def escolher(

@@ -1,19 +1,49 @@
 # Resultados do benchmark
 
-## Arrependimento por mundo — qual abertura é a menos pior
+## Aberturas em três mundos concretos
 
-Média penalizada em cada mundo (respostas cortadas, léxico inteiro digitável), e entre parênteses o quanto a abertura perde para a melhor daquele mundo.
+Média penalizada em cada mundo (respostas cortadas, léxico inteiro digitável), e entre parênteses o quanto a abertura perde para a melhor DAS SEIS. Isso não é um minimax: a referência sai do próprio conjunto comparado, então quem está no topo dele zera por construção. O veredito de robustez é o da seção seguinte, que usa referência independente.
 
 | abertura | N=300 | N=1500 | N=6046 | pior caso |
 |---|---|---|---|---|
 | tarso | 2.770 (+0.010) | 3.266 (+0.003) | 3.848 (+0.000) | 0.010 |
 | tosar | 2.780 (+0.020) | 3.287 (+0.024) | 3.890 (+0.042) | 0.042 |
-| sorte | 2.760 (+0.000) | 3.263 (+0.000) | 3.849 (+0.001) | 0.001 **←** |
+| sorte | 2.760 (+0.000) | 3.263 (+0.000) | 3.849 (+0.001) | 0.001 |
 | serão | 2.787 (+0.027) | 3.331 (+0.068) | 3.906 (+0.057) | 0.068 |
 | tirão | 2.760 (+0.000) | 3.292 (+0.029) | 3.860 (+0.012) | 0.029 |
 | cairo | 2.783 (+0.023) | 3.282 (+0.019) | 3.862 (+0.013) | 0.023 |
 
-Menor arrependimento de pior caso: **sorte**.
+
+## Robustez da abertura — minimax de arrependimento
+
+Arrependimento em tentativas contra a melhor abertura de cada mundo, onde um mundo é uma distribuição das secretas com M palavras efetivas (M = 2^H). Última coluna: o pior caso, que é o que o critério minimiza.
+
+| abertura | M=300<br>*lista bem curada* | M=447<br>*prior ICF, padrão do projeto* | M=600 | M=1200<br>*estilo Wordle* | M=2400 | M=4800 | M=6046<br>*não sei nada* | **pior caso** |
+|---|---|---|---|---|---|---|---|---|
+| **sertã** | +0.0283 | +0.0109 | +0.0000 | +0.0000 | +0.0084 | +0.0198 | +0.0281 | **+0.0283** |
+| tarso | +0.0000 | +0.0000 | +0.0101 | +0.0027 | +0.0112 | +0.0290 | +0.0255 | +0.0290 |
+| tória | +0.0364 | +0.0425 | +0.0323 | +0.0382 | +0.0528 | +0.0437 | +0.0122 | +0.0528 |
+| corta | +0.0617 | +0.0507 | +0.0467 | +0.0192 | +0.0000 | +0.0098 | +0.0000 | +0.0617 |
+| tirão | +0.0525 | +0.0553 | +0.0643 | +0.0582 | +0.0608 | +0.0481 | +0.0364 | +0.0643 |
+| tosar | +0.0603 | +0.0412 | +0.0384 | +0.0391 | +0.0385 | +0.0490 | +0.0686 | +0.0686 |
+| cairo | +0.0702 | +0.0602 | +0.0584 | +0.0546 | +0.0567 | +0.0493 | +0.0392 | +0.0702 |
+| carto | +0.0985 | +0.0833 | +0.0671 | +0.0137 | +0.0042 | +0.0000 | +0.0012 | +0.0985 |
+
+Abertura robusta: **sertã** (+0.0283 no pior mundo).
+
+Sensibilidade à grade — removendo uma coluna de cada vez, a vencedora muda em M=4800 (passa a tarso, +0.0255). A margem no topo é da ordem da própria arbitrariedade da grade, então leia o pódio como empate, não como ordem.
+
+A referência de cada coluna, e o que o nível 2 escolheria nela:
+
+| mundo | T | melhor em tentativas | escolha do nível 2 (bits) | custo |
+|---|---|---|---|---|
+| M=300 — lista bem curada | 0.854 | tarso (3.3480) | tarso (3.3480) | +0.0000 |
+| M=447 — prior ICF, padrão do projeto | 1 | tarso (3.3715) | tarso (3.3715) | +0.0000 |
+| M=600  | 1.13 | sertã (3.3924) | tirão (3.4566) | +0.0643 |
+| M=1200 — estilo Wordle | 1.56 | sertã (3.4743) | tirão (3.5325) | +0.0582 |
+| M=2400  | 2.35 | corta (3.5664) | tirão (3.6273) | +0.0608 |
+| M=4800  | 5.19 | carto (3.7075) | tória (3.7512) | +0.0437 |
+| M=6046 — não sei nada | ∞ | corta (3.8250) | cairo (3.8642) | +0.0392 |
 
 ## Comparação de estratégias — bateria realista
 

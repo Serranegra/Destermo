@@ -269,6 +269,10 @@ python benchmark.py --catalogo
 ```
 
 ```bash
+python -m termo.robustez
+```
+
+```bash
 python analise.py
 ```
 
@@ -290,6 +294,7 @@ página web não exige mexer em nada dentro de `termo/`.
 | `termo/matriz.py` | Matriz 6.046 × 6.046 de padrões pré-computados (numpy vetorizado) |
 | `termo/entropia.py` | Cálculo de entropia, regra de endgame, cache da abertura (nível 2) |
 | `termo/nivel3.py` | Busca na árvore de decisão pelo menor nº esperado de tentativas (nível 3) |
+| `termo/robustez.py` | Número efetivo de palavras (M = 2^H) e minimax de arrependimento sobre a distribuição desconhecida |
 | `termo/estrategias.py` | As estratégias do benchmark |
 | `solver.py` | CLI interativa (só I/O) |
 | `benchmark.py` | Simulação de partidas e métricas |
@@ -450,24 +455,27 @@ que a abertura perde para a melhor daquele mundo:
 | `tosar` | nível 3 | 2,780 (+0,020) | 3,287 (+0,024) | 3,890 (+0,042) | 0,042 |
 | `serão` | fóruns | 2,787 (+0,027) | 3,331 (+0,068) | 3,906 (+0,057) | 0,068 |
 
-Três leituras, e a primeira é a que menos agrada aqui:
+Duas leituras se sustentam:
 
 - **`serão` é o pior dos seis.** Não é robusto: perde em todos os mundos, e mais
   onde o mundo é grande. A crítica desta seção sobrevive à mudança de régua.
-- **`tosar`, a abertura da nossa CLI, é o segundo pior.** Ele foi otimizado sob o
-  prior de T=1, e estes mundos são uniformes — a especialização que o faz ganhar
-  0,54 tentativa na bateria realista é exatamente o que o penaliza quando a
-  premissa muda. É a mesma ressalva do nível 3, medida de outro ângulo.
-- **Ganha `sorte`, que nenhuma das análises anteriores havia eleito.** Ela é
-  ~ótima nos três mundos ao mesmo tempo (0,001 de arrependimento), e é a 219ª
-  palavra mais comum — perfeitamente digitável. Ela aparecia só como coadjuvante:
-  segunda no ranking do mundo curto, vencedora da busca do nível 3 lá.
+- **O pior arrependimento da tabela inteira é 0,07 tentativa.** A discussão toda
+  — fórum contra solver, nível 2 contra nível 3 — vale menos de um décimo de
+  tentativa se a abertura for escolhida com um mínimo de cuidado.
 
-E a leitura de cima de tudo: **o pior arrependimento da tabela inteira é 0,07
-tentativa.** A discussão toda — fórum contra solver, nível 2 contra nível 3 —
-vale menos de um décimo de tentativa se a abertura for escolhida com um mínimo de
-cuidado. O que separa `serão` das outras não é ele ser ruim; é ser o único ponto
-da disputa que não sobrevive à troca de premissa.
+**O que esta tabela NÃO autoriza é eleger uma vencedora**, e a primeira versão
+desta seção o fazia. A referência de cada coluna aqui é a melhor das seis
+candidatas, não a melhor abertura daquele mundo — com uma régua tirada do próprio
+conjunto comparado, quem estiver no topo dele termina com arrependimento zero por
+construção, e o número diz mais sobre a companhia do que sobre a palavra. O
+veredito de robustez está em [E se a própria distribuição for
+desconhecida?](#e-se-a-própria-distribuição-for-desconhecida), que usa três
+mundos a mais, uma referência independente e mede a esperança exata em vez da
+média de uma bateria. **Lá quem se sai bem é `tarso`, não `sorte`.**
+
+Continua valendo desta tabela o que ela mede de fato: como cada abertura joga em
+três mundos concretos, e que `tosar` — otimizado sob o prior de T=1 — é quem mais
+se degrada quando o mundo vira uniforme.
 
 #### O mapa: os dois botões de uma vez
 
@@ -485,9 +493,9 @@ uma faixa em que `sorte` e `certa` mandam.
 
 Duas coisas que só o mapa mostra:
 
-- **`sorte` domina a coluna de T=1 na faixa do meio** (N de 300 a 1000), o que é
-  uma confirmação independente da tabela de arrependimento — dois métodos
-  diferentes, a mesma palavra.
+- **`sorte` domina a coluna de T=1 na faixa do meio** (N de 300 a 1000). Vale
+  notar que essa faixa é estreita: no minimax sobre a família inteira de
+  distribuições ela nem aparece no pódio, que é de `tarso` e `sertã`.
 - **A coluna de T=0,1 é escura de cima a baixo, e isso não é vitória de ninguém.**
   Com o prior tão concentrado, a melhor abertura do mundo vale 0,9 bit: não há o
   que separar, e todas as jogadas empatam em quase-nada. O gráfico usa a distância
@@ -570,12 +578,106 @@ a resposta; maximizar bits, não.
 fechado são o mesmo mundo. Os dois caminhos dão `tória` com E=3,8252 — é uma
 checagem de consistência de graça.)
 
+#### E se a própria distribuição for desconhecida?
+
+Todas as tabelas acima fixam um mundo antes de perguntar qual é a melhor
+abertura. Esta inverte: trata a distribuição das secretas como incógnita e mede
+o **número efetivo de palavras** que cada prior admite,
+
+```
+M(prior) = 2^H(prior)      [uniforme sobre K palavras dá exatamente K]
+```
+
+Nessa régua o prior padrão do projeto (T=1) vale **M=447** — ele já é uma aposta
+forte, mais perto de "lista curada" que de "não sei nada":
+
+| T | 0,25 | 0,5 | **1** | 2 | 4 | ∞ |
+|---|---|---|---|---|---|---|
+| M | 7,7 | 60,6 | **447** | 1.872 | 4.149 | 6.046 |
+
+**M é suficiente, quase sempre.** Antes de reduzir tudo a um eixo, o módulo
+testa se formas diferentes com a mesma concentração escolhem a mesma abertura.
+Para M=1200 por três caminhos — corte em 6.046/3.000/1.500 com o T ajustado —, as
+três dão `tirão`, com gap de 0,0000 bit. O mesmo vale em M=300, 600 e 2.400. **Em
+M=4.800 o colapso falha** (`tirão` contra `tória`): perto do uniforme a forma do
+corte volta a importar, e a grade abaixo, que usa só T, não distingue esse caso.
+
+A matriz de arrependimento (regret = tentativas a mais que a melhor abertura
+daquele mundo, tudo em nível 2):
+
+| abertura | M=300 | M=447 | M=600 | M=1200 | M=2400 | M=4800 | M=6046 | **pior caso** |
+|---|---|---|---|---|---|---|---|---|
+| | *curada* | *padrão* | | *Wordle* | | | *nada sei* | |
+| **`sertã`** | 0,0283 | 0,0109 | 0,0000 | 0,0000 | 0,0084 | 0,0198 | 0,0281 | **0,0283** |
+| `tarso` | 0,0000 | 0,0000 | 0,0101 | 0,0027 | 0,0112 | 0,0290 | 0,0255 | 0,0290 |
+| `tória` | 0,0364 | 0,0425 | 0,0323 | 0,0382 | 0,0528 | 0,0437 | 0,0122 | 0,0528 |
+| `corta` | 0,0617 | 0,0507 | 0,0467 | 0,0192 | 0,0000 | 0,0098 | 0,0000 | 0,0617 |
+| `tirão` | 0,0525 | 0,0553 | 0,0643 | 0,0582 | 0,0608 | 0,0481 | 0,0364 | 0,0643 |
+| `tosar` | 0,0603 | 0,0412 | 0,0384 | 0,0391 | 0,0385 | 0,0490 | 0,0686 | 0,0686 |
+| `cairo` | 0,0702 | 0,0602 | 0,0584 | 0,0546 | 0,0567 | 0,0493 | 0,0392 | 0,0702 |
+| `carto` | 0,0985 | 0,0833 | 0,0671 | 0,0137 | 0,0042 | 0,0000 | 0,0012 | 0,0985 |
+
+No papel a vencedora é `sertã`, com 0,0283 contra os 0,0290 de `tarso`. **Mas
+essa margem de 0,0007 não sobrevive à própria grade.** Tirando uma coluna de cada
+vez — e a composição da grade é escolha nossa, não dado —, o pódio inverte:
+
+| grade | vencedora | 2ª |
+|---|---|---|
+| completa | `sertã` (0,0283) | `tarso` (0,0290) |
+| sem M=4800 | **`tarso` (0,0255)** | `sertã` (0,0283) |
+| sem qualquer outra coluna | `sertã` (0,0283) | `tarso` (0,0290) |
+
+Uma coluna decide. A leitura honesta é que **`sertã` e `tarso` estão empatados, e
+a abertura do nível 2 é robusta** — o que é o resultado mais tranquilizador que
+esta análise poderia dar: o solver já joga uma abertura que não depende do prior
+estar certo. `sertã` é a curiosidade, não a recomendação.
+
+Quem paga a conta é `tosar`, a abertura da CLI: 0,069, mais que o dobro, e o pior
+caso dela é justamente o mundo uniforme. É a ressalva do nível 3 vista de outro
+ângulo — ele otimiza *sob* o prior, então erra mais quando o prior erra.
+
+**Quanto custa usar `tosar` com a distribuição errada?** No máximo 0,069
+tentativa. A discussão inteira desta seção cabe em sete centésimos de tentativa,
+o que é a informação mais útil da tabela: qualquer uma dessas oito aberturas é
+uma escolha defensável, e trocar de abertura não é onde estão os ganhos.
+
+Levada ao nível 3, `sertã` não constrói caso para virar padrão:
+
+| | `sertã` | `tosar` (padrão) |
+|---|---|---|
+| E na raiz, T=1 | 3,0249 | **3,0094** |
+| bateria realista 1.500 | **3,4580** | 3,4893 |
+| vitória | 99,93% | **100,0%** |
+
+Ela perde na métrica que a CLI otimiza, ganha 0,031 tentativa jogando, e troca
+isso por uma derrota em 1.500 partidas. Somando com o empate técnico acima: **não
+há motivo para mexer na abertura de nenhum dos dois níveis.** O que a análise
+entrega não é uma palavra nova, é a medida de quanto a escolha atual depende de
+uma premissa — e a resposta é "pouco, no nível 2; o dobro disso, no nível 3".
+
+**Duas ressalvas que a tabela não carrega sozinha.** A primeira: minimax de
+arrependimento é refém do conjunto de mundos admitidos — um M implausível na
+grade sequestra o máximo sozinho. **O piso M=300 é uma escolha, não um dado.**
+`piso_empirico` em [`termo/robustez.py`](termo/robustez.py) está pronto para
+trocá-la por medição: dado um registro das secretas já sorteadas em
+`data/secretas_sorteadas.txt`, a mais rara delas fixa o piso de M por baixo. O
+arquivo não existe no repositório.
+
+A segunda: a referência de cada coluna é a melhor abertura **do beam de
+entropia**, não do léxico inteiro — varrer as 6.046 por coluna custaria ~8 h. É
+o mesmo beam do nível 3, com a mesma justificativa e a mesma consequência: os
+arrependimentos são limites inferiores.
+
+Isto sai de `python -m termo.robustez` (~8 min, com cache em `data/robustez.json`
+invalidado por assinatura do código) e a tabela vai para
+[tabela.md](resultados/tabela.md) via `analise.py`.
+
 #### Para escolher uma na prática
 
 | se você… | jogue | por quê |
 |---|---|---|
-| não quer apostar em premissa nenhuma | **`sorte`** | nunca fica a mais de 0,001 tentativa do ótimo nos três mundos testados, e é a 219ª palavra mais comum |
-| confia no prior do projeto | **`tosar`** | é o que a CLI já sugere: menor E[tentativas] com T=1 sobre o léxico inteiro |
+| não quer apostar em premissa nenhuma | **`tarso`** | menor arrependimento de pior caso sobre sete distribuições, de "lista curada" a uniforme (empatada com `sertã`) — e é a abertura do nível 2, então a CLI já a oferece com `--nivel 2` |
+| confia no prior do projeto | **`tosar`** | é o padrão da CLI: menor E[tentativas] com T=1 sobre o léxico inteiro. Custa até 0,069 tentativa se o prior estiver errado |
 | acha que só palavras bem comuns caem, e mede em **bits** | **`serão`** | é o ótimo do mundo fechado de 200–300 — aqui os fóruns estão certos |
 | acha que só palavras bem comuns caem, e mede em **tentativas** | **`sorte`** (N≈300) ou **`certa`** (N≈500–1500) | ganhar cedo vale mais que informar muito |
 

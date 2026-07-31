@@ -32,6 +32,7 @@ import matplotlib.pyplot as plt  # noqa: E402
 from matplotlib.colors import LinearSegmentedColormap  # noqa: E402
 
 DIR_RESULTADOS = Path(__file__).resolve().parent / "resultados"
+DIR_DADOS = Path(__file__).resolve().parent / "data"
 
 # Paleta da marca (brand/README.md), uma rampa por matiz. Duas decisões que não
 # são estéticas:
@@ -507,11 +508,13 @@ def tabela_arrependimento(experimento: dict) -> list[str]:
     dados = experimento["arrependimento"]
     mundos, aberturas = dados["mundos"], dados["aberturas"]
     linhas = [
-        "## Arrependimento por mundo — qual abertura é a menos pior",
+        "## Aberturas em três mundos concretos",
         "",
         "Média penalizada em cada mundo (respostas cortadas, léxico inteiro "
         "digitável), e entre parênteses o quanto a abertura perde para a melhor "
-        "daquele mundo.",
+        "DAS SEIS. Isso não é um minimax: a referência sai do próprio conjunto "
+        "comparado, então quem está no topo dele zera por construção. O veredito "
+        "de robustez é o da seção seguinte, que usa referência independente.",
         "",
         "| abertura | " + " | ".join(mundos) + " | pior caso |",
         "|" + "---|" * (len(mundos) + 2),
@@ -521,12 +524,89 @@ def tabela_arrependimento(experimento: dict) -> list[str]:
             f"{dados['medias'][palavra][m]:.3f} (+{dados['arrependimento'][palavra][m]:.3f})"
             for m in mundos
         ]
-        marca = " **←**" if palavra == dados["vencedora_minimax"] else ""
         linhas.append(
             f"| {palavra} | " + " | ".join(celulas)
-            + f" | {dados['pior_caso'][palavra]:.3f}{marca} |"
+            + f" | {dados['pior_caso'][palavra]:.3f} |"
         )
-    linhas += ["", f"Menor arrependimento de pior caso: **{dados['vencedora_minimax']}**.", ""]
+    linhas += ["", ""]
+    return linhas
+
+
+def tabela_robustez(dados: dict) -> list[str]:
+    """A matriz de regret em markdown: linhas = aberturas, colunas = mundos.
+
+    Vem do cache de `termo/robustez.py` e não de `resultados/`, porque ali o
+    artefato caro É o resultado — a grade leva ~8 min e a assinatura dela é que
+    manda regenerar.
+    """
+    cenarios = dados["cenarios"]
+    candidatas = sorted(dados["candidatas"], key=lambda p: dados["pior_caso"][p])
+    robusta = dados["robusta"]
+
+    cabecalhos = []
+    for c in cenarios:
+        titulo = f"M={c['m']:.0f}"
+        cabecalhos.append(f"{titulo}<br>*{c['rotulo']}*" if c["rotulo"] else titulo)
+
+    linhas = [
+        "## Robustez da abertura — minimax de arrependimento",
+        "",
+        "Arrependimento em tentativas contra a melhor abertura de cada mundo, "
+        "onde um mundo é uma distribuição das secretas com M palavras efetivas "
+        "(M = 2^H). Última coluna: o pior caso, que é o que o critério minimiza.",
+        "",
+        "| abertura | " + " | ".join(cabecalhos) + " | **pior caso** |",
+        "|" + "---|" * (len(cenarios) + 2),
+    ]
+    for palavra in candidatas:
+        celulas = [f"{dados['regret'][palavra][c['descricao']]:+.4f}" for c in cenarios]
+        pior = f"{dados['pior_caso'][palavra]:+.4f}"
+        nome = f"**{palavra}**" if palavra == robusta else palavra
+        pior = f"**{pior}**" if palavra == robusta else pior
+        linhas.append(f"| {nome} | " + " | ".join(celulas) + f" | {pior} |")
+
+    # A composição da grade é escolha, não dado (ver a ressalva em
+    # termo/robustez.py). Tirar uma coluna de cada vez mostra se a vencedora
+    # sobrevive à escolha ou se ela é artefato de uma coluna só.
+    descricoes = [c["descricao"] for c in cenarios]
+    flips = []
+    for fora in descricoes:
+        restantes = [d for d in descricoes if d != fora]
+        pior = {p: max(dados["regret"][p][d] for d in restantes) for p in candidatas}
+        vencedora = min(pior, key=lambda p: pior[p])
+        if vencedora != robusta:
+            rotulo = next(c for c in cenarios if c["descricao"] == fora)
+            flips.append((f"M={rotulo['m']:.0f}", vencedora, pior[vencedora]))
+
+    linhas += [
+        "",
+        f"Abertura robusta: **{robusta}** "
+        f"({dados['pior_caso'][robusta]:+.4f} no pior mundo).",
+        "",
+    ]
+    if flips:
+        linhas += [
+            "Sensibilidade à grade — removendo uma coluna de cada vez, a vencedora "
+            "muda em " + ", ".join(f"{m} (passa a {v}, {p:+.4f})" for m, v, p in flips)
+            + ". A margem no topo é da ordem da própria arbitrariedade da grade, "
+            "então leia o pódio como empate, não como ordem.",
+            "",
+        ]
+    linhas += [
+        "A referência de cada coluna, e o que o nível 2 escolheria nela:",
+        "",
+        "| mundo | T | melhor em tentativas | escolha do nível 2 (bits) | custo |",
+        "|---|---|---|---|---|",
+    ]
+    for c in cenarios:
+        t = "∞" if c["temperatura"] > 1e12 else f"{c['temperatura']:.3g}"
+        custo = c["esperado_bits"] - c["esperado_tentativas"]
+        linhas.append(
+            f"| M={c['m']:.0f} {c['rotulo'] and '— ' + c['rotulo']} | {t} | "
+            f"{c['referencia_tentativas']} ({c['esperado_tentativas']:.4f}) | "
+            f"{c['referencia_bits']} ({c['esperado_bits']:.4f}) | {custo:+.4f} |"
+        )
+    linhas.append("")
     return linhas
 
 
@@ -617,6 +697,14 @@ def main() -> None:
         for modo in TEMAS:
             print(f"  {grafico_grade_n_t(experimento, modo)}")
             print(f"  {grafico_fronteira(experimento, modo)}")
+
+    # O cache de `termo/robustez.py` mora em data/, não em resultados/: lá o
+    # artefato caro é o próprio resultado (ver o docstring de `tabela_robustez`).
+    robustez = DIR_DADOS / "robustez.json"
+    if robustez.exists():
+        extras += tabela_robustez(json.loads(robustez.read_text(encoding="utf-8")))
+    else:
+        print("  (pulando a robustez: rode `python -m termo.robustez` primeiro)")
 
     if blocos or extras:
         print(f"  {tabela_markdown(blocos, extras)}")

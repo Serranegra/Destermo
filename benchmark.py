@@ -543,10 +543,15 @@ def _arrependimento(lexico: Lexico, matriz: np.ndarray, aberturas: list[str],
 
     O veredito de uma linha só ("`serão` perde por 0,04") supõe que se sabe em que
     mundo se está. Ninguém sabe: a lista de respostas do Termo é uma hipótese, não
-    um dado. Sob incerteza a pergunta muda de "qual é a melhor?" para "qual é a
-    menos pior no seu pior mundo?" — que é minimax de arrependimento, e pode dar
-    outra resposta, porque uma abertura ótima num mundo e péssima nos outros perde
-    para uma que fica sempre perto.
+    um dado. Aqui a mesma abertura é medida em três mundos, para ver quanto ela
+    depende da premissa.
+
+    NÃO é um minimax de arrependimento, embora pareça: a referência de cada mundo
+    é a melhor DAS SEIS candidatas, tirada do próprio conjunto comparado, e com
+    isso quem estiver no topo dele zera por construção. Serve para comparar as
+    seis entre si, não para eleger uma robusta — para isso é `termo/robustez.py`,
+    que usa uma referência independente (o beam de entropia do mundo) e uma
+    família contínua de distribuições em vez de três pontos escolhidos a dedo.
 
     Mundos ABERTOS (`mundo_aberto`): o corte é sobre as respostas, e as seis
     aberturas continuam digitáveis nos três. Um mundo fechado não serviria aqui —
@@ -573,9 +578,11 @@ def _arrependimento(lexico: Lexico, matriz: np.ndarray, aberturas: list[str],
         p: {r: medias[p][r] - melhor_do_mundo[r] for r in rotulos} for p in aberturas
     }
     pior_caso = {p: max(arrependimento[p].values()) for p in aberturas}
-    vencedora = min(pior_caso, key=lambda p: pior_caso[p])
-    print(f"\n  menor arrependimento de pior caso: {vencedora} "
-          f"({pior_caso[vencedora]:.4f} tentativa)")
+    print(f"\n  maior distância à melhor das seis, por abertura: "
+          + ", ".join(f"{p} {v:.4f}" for p, v in sorted(pior_caso.items(),
+                                                        key=lambda x: x[1])))
+    print("  (referência tirada do próprio conjunto — para robustez, "
+          "`python -m termo.robustez`)")
     return partidas, {
         "mundos": rotulos,
         "aberturas": aberturas,
@@ -583,7 +590,8 @@ def _arrependimento(lexico: Lexico, matriz: np.ndarray, aberturas: list[str],
         "melhor_do_mundo": melhor_do_mundo,
         "arrependimento": arrependimento,
         "pior_caso": pior_caso,
-        "vencedora_minimax": vencedora,
+        # Sem "vencedora": a referência não é independente do conjunto comparado.
+        # Quem elege robustez é `termo/robustez.py`.
     }
 
 
