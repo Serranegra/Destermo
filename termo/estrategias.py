@@ -14,6 +14,10 @@ aplica a elas: nunca "queimam" uma tentativa.
 
 A quinta é opcional porque custa ordens de magnitude mais que as outras quatro
 juntas — entra no benchmark só quando pedida (`benchmark.py --nivel3`).
+
+`AberturaFixa` não é uma competidora: é uma sonda. Ela força a primeira jogada e
+delega o resto ao nível 2, para medir quanto uma abertura vale isolando-a da
+política que vem depois (`benchmark.py --serao`).
 """
 
 from __future__ import annotations
@@ -125,6 +129,25 @@ class Nivel3(Estrategia):
             if self._abertura is None:
                 self._abertura = self.motor.abertura().indice
             return self._abertura
+        return self.motor.escolher_com_cache(candidatas, rodada).indice
+
+
+class AberturaFixa(Estrategia):
+    """Abertura imposta, nível 2 daí em diante.
+
+    Isola o efeito da primeira jogada: como a política pós-abertura é a mesma, a
+    diferença de média entre duas instâncias é atribuível só à abertura. É assim
+    que se compara uma sugestão de fora — `serão`, digamos — com a do solver.
+    """
+
+    def __init__(self, motor: Motor, palavra: str):
+        self.motor = motor
+        self.indice = motor.lexico.indice_de(palavra)
+        self.nome = f"abertura {motor.lexico.mostrar(self.indice)}"
+
+    def escolher(self, candidatas: np.ndarray, rodada: int) -> int:
+        if rodada == 1:
+            return self.indice
         return self.motor.escolher_com_cache(candidatas, rodada).indice
 
 

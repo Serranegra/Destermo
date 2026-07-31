@@ -5,12 +5,15 @@
     python benchmark.py --bateria completo
     python benchmark.py --varredura-t
     python benchmark.py --nivel3
+    python benchmark.py --serao
     python analise.py
 
 Gera em `resultados/`:
     distribuicao_<bateria>.png        distribuição de tentativas por estratégia
     distribuicao_nivel3_<bateria>.png o mesmo, nível 2 vs nível 3
     curva_temperatura.png             tentativas médias e taxa de vitória vs. T
+    grade_n_t.png                     melhor abertura em cada mundo (N, T)
+    fronteira_h_icf.png               entropia contra frequência, palavra a palavra
     tabela.md                         a mesma informação em texto (table view)
 
 Cada gráfico sai em duas versões, clara e escura — a escura usa passos próprios
@@ -26,6 +29,7 @@ import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
+from matplotlib.colors import LinearSegmentedColormap  # noqa: E402
 
 DIR_RESULTADOS = Path(__file__).resolve().parent / "resultados"
 
@@ -275,9 +279,262 @@ def grafico_temperatura(resultados: list[dict], modo: str) -> Path:
     return caminho
 
 
-def tabela_markdown(blocos: dict[str, list[dict]]) -> Path:
+def grafico_grade_n_t(experimento: dict, modo: str) -> Path:
+    """Mapa (N, T): onde a abertura dos fóruns é de fato a melhor.
+
+    As duas varreduras de uma dimensão só — cortar a lista, baixar o prior — dão
+    respostas que parecem contraditórias. Vistas como os dois eixos de um mapa,
+    param de ser: são regiões vizinhas, e as duas posições conhecidas (o padrão do
+    projeto e a hipótese do fórum) são dois pontos marcados nele.
+
+    O verde não é decorativo aqui: no vocabulário do Termo ele é "acerto", e é
+    exatamente o que a célula significa — `serão` é a melhor abertura ali. A rampa
+    é de matiz único, então a leitura sobrevive a qualquer daltonismo; e o nome da
+    vencedora vai escrito em toda célula, então a cor nunca é o único canal.
+
+    A distância é RELATIVA à entropia da melhor abertura da célula, não em bits
+    absolutos. Com T baixo a massa toda cabe em poucas palavras e a melhor jogada
+    do mundo vale 0,9 bit: ali as diferenças em bits somem por construção, e o
+    número absoluto pintaria de verde ("`serão` é ótimo!") um canto onde na verdade
+    nenhuma abertura separa coisa alguma.
+    """
+    tema = TEMAS[modo]
+    plt.rcParams["font.family"] = FONTES
+    grade = experimento["grade"]
+    alvo = experimento["palavra"]
+
+    cortes = grade["cortes"]
+    temperaturas = grade["temperaturas"]
+    celula = {(c["n"], c["t"]): c for c in grade["celulas"]}
+    distancias = [
+        [100 * celula[(n, t)]["distancia"] / max(celula[(n, t)]["entropia_melhor"], 1e-9)
+         for t in temperaturas]
+        for n in cortes
+    ]
+
+    # A rampa termina no tom da grade, não na superfície: uma célula ruim ainda
+    # tem que se ler como célula, e não como buraco no gráfico.
+    rampa = LinearSegmentedColormap.from_list(
+        "destermo", [tema["destaque"], tema["grade"]]
+    )
+    figura, eixos = plt.subplots(figsize=(10.0, 6.6), dpi=170)
+    limite = max(max(linha) for linha in distancias)
+    imagem = eixos.imshow(distancias, cmap=rampa, vmin=0.0, vmax=limite, aspect="auto")
+
+    # As duas posições conhecidas, se a grade do benchmark ainda as contiver —
+    # `CORTES_GRADE` e `TEMPERATURAS_GRADE` são constantes de lá, não daqui.
+    conhecidas = {}
+    if 1.0 in temperaturas:
+        conhecidas[(len(cortes) - 1, temperaturas.index(1.0))] = "padrão do projeto"
+    if 300 in cortes:
+        conhecidas[(cortes.index(300), 0)] = "hipótese do fórum"
+    for i, n in enumerate(cortes):
+        for j, t in enumerate(temperaturas):
+            atual = celula[(n, t)]
+            # Texto claro sobre as células escuras (perto de 0) e escuro sobre as
+            # claras — o limiar segue a rampa, não o valor absoluto.
+            escura = distancias[i][j] < limite * 0.45
+            rotulo = conhecidas.get((i, j))
+            eixos.text(
+                j, i - (0.13 if rotulo else 0), atual["melhor"],
+                ha="center", va="center", fontsize=8.5,
+                color=tema["superficie"] if escura else tema["tinta"],
+                fontweight="bold" if atual["distancia"] == 0 else "normal",
+            )
+            if rotulo:
+                # Dentro da célula: fora dela o rótulo cai por cima da vizinha.
+                eixos.text(
+                    j, i + 0.19, rotulo, ha="center", va="center", fontsize=7.5,
+                    style="italic",
+                    color=tema["superficie"] if escura else tema["tinta2"],
+                )
+
+    eixos.set_xticks(range(len(temperaturas)))
+    eixos.set_xticklabels(["∞" if t > 1e12 else f"{t:g}" for t in temperaturas])
+    eixos.set_yticks(range(len(cortes)))
+    eixos.set_yticklabels([f"{n}" for n in cortes])
+    eixos.set_xlabel("temperatura T do prior dentro do corte   (∞ = uniforme)",
+                     color=tema["tinta2"], fontsize=10, labelpad=8)
+    eixos.set_ylabel("N — quantas palavras podem ser a resposta",
+                     color=tema["tinta2"], fontsize=10, labelpad=8)
+    eixos.set_title(
+        f"Melhor abertura em cada mundo (N, T) — e o quanto '{alvo}' fica atrás",
+        color=tema["tinta"], fontsize=13, pad=38, loc="left", fontweight="medium",
+    )
+    eixos.text(
+        0, 1.015,
+        "à direita de T=0,5 a massa cabe em poucas palavras (a melhor abertura vale "
+        "0,9 bit em T=0,1):\nlá nenhuma abertura separa nada, e o desacordo some por "
+        "construção",
+        transform=eixos.transAxes, fontsize=8.5, color=tema["apagada"], va="bottom",
+    )
+
+    for (i, j) in conhecidas:
+        eixos.add_patch(plt.Rectangle(
+            (j - 0.5, i - 0.5), 1, 1, fill=False,
+            edgecolor=tema["tinta"], linewidth=1.8, zorder=5,
+        ))
+
+    barra = figura.colorbar(imagem, ax=eixos, pad=0.02)
+    barra.set_label(f"% da entropia da melhor abertura que '{alvo}' perde para ela",
+                    color=tema["tinta2"], fontsize=9.5)
+    barra.ax.tick_params(colors=tema["apagada"], length=0, labelsize=8.5)
+    barra.outline.set_edgecolor(tema["eixo"])
+
+    figura.patch.set_facecolor(tema["superficie"])
+    eixos.tick_params(colors=tema["apagada"], length=0, labelsize=9)
+    for lado in eixos.spines:
+        eixos.spines[lado].set_color(tema["eixo"])
+    figura.tight_layout()
+    sufixo = "" if modo == "claro" else "_dark"
+    caminho = DIR_RESULTADOS / f"grade_n_t{sufixo}.png"
+    figura.savefig(caminho, facecolor=tema["superficie"])
+    plt.close(figura)
+    return caminho
+
+
+def grafico_fronteira(experimento: dict, modo: str) -> Path:
+    """Entropia contra frequência: a troca que produz o desacordo inteiro.
+
+    Uma abertura quer duas coisas incompatíveis — separar muito o conjunto e poder
+    ser a resposta. A fronteira de Pareto é o conjunto das palavras em que ganhar
+    numa exige perder na outra, e todas as candidatas a "melhor abertura" que
+    apareceram nesta investigação estão nela. Não há erro de cálculo em lado
+    nenhum: cada um escolheu um ponto diferente da mesma curva.
+    """
+    tema = TEMAS[modo]
+    plt.rcParams["font.family"] = FONTES
+    nuvem = experimento["nuvem"]
+    alvo = nuvem["alvo"]
+
+    figura, eixos = plt.subplots(figsize=(9.5, 5.8), dpi=170)
+    # Recorte no topo: a nuvem desce até ~1,7 bit, e 4.000 palavras ruins não
+    # informam nada sobre qual é a melhor abertura — só achatam a fronteira.
+    piso = 4.55
+    teto = max(nuvem["entropia"]) + 0.30
+
+    corte = nuvem["cortes_icf"][str(300)]
+    eixos.axvspan(min(nuvem["icf"]) - 0.4, corte, color=tema["grade"], zorder=0)
+    eixos.annotate(
+        "as 300 mais comuns — a lista que o fórum supõe",
+        (min(nuvem["icf"]) - 0.2, teto - 0.02), ha="left", va="top",
+        fontsize=8.5, color=tema["apagada"], zorder=2,
+    )
+
+    eixos.scatter(nuvem["icf"], nuvem["entropia"], s=5, color=tema["apagada"],
+                  alpha=0.16, linewidths=0, zorder=1, rasterized=True)
+
+    # Top-10 em entropia: todas raras, e é esse o ponto — ficam à direita da faixa.
+    # Quem já está na fronteira ganha marcador aqui mas não um segundo rótulo.
+    na_fronteira = {linha[0] for linha in nuvem["fronteira"]}
+    topo = [linha for linha in nuvem["anotar"] if linha[0] != alvo]
+    eixos.scatter([l[1] for l in topo], [l[2] for l in topo], s=26,
+                  color=tema["tinta2"], zorder=3)
+    # Alterna acima/abaixo pela contagem do que foi DESENHADO, não do laço: as
+    # top-10 se amontoam numa faixa estreita de y e a paridade do índice original
+    # deixaria vizinhas do mesmo lado.
+    desenhadas = 0
+    for palavra, icf, h in sorted(topo, key=lambda l: l[1]):
+        if palavra in na_fronteira:
+            continue
+        eixos.annotate(
+            palavra, (icf, h), textcoords="offset points",
+            xytext=(0, 9 if desenhadas % 2 == 0 else -16), ha="center",
+            fontsize=8, color=tema["tinta2"], zorder=4,
+        )
+        desenhadas += 1
+
+    fronteira = nuvem["fronteira"]
+    eixos.step([l[1] for l in fronteira], [l[2] for l in fronteira], where="post",
+               color=tema["destaque"], linewidth=1.6, zorder=4)
+    eixos.scatter([l[1] for l in fronteira], [l[2] for l in fronteira], s=34,
+                  color=tema["destaque"], zorder=5)
+    # A fronteira sobe da esquerda para a direita, então rótulo à esquerda-acima
+    # não cobre o próximo ponto; os dois últimos saem por baixo para não brigar
+    # com o anel do alvo, que fica entre eles.
+    for k, (palavra, icf, h) in enumerate(fronteira):
+        if palavra == alvo:
+            continue
+        abaixo = k >= len(fronteira) - 2
+        eixos.annotate(
+            palavra, (icf, h), textcoords="offset points",
+            xytext=(6, -12) if abaixo else (-7, 4),
+            ha="left" if abaixo else "right",
+            fontsize=8.5, color=tema["destaque"], zorder=6,
+        )
+
+    # O alvo se distingue por FORMA, não por cor: um anel de alto contraste. Um
+    # segundo matiz aqui seria o dourado ao lado do verde, que é o par que colapsa
+    # sob deuteranopia (brand/README.md).
+    ponto = next(l for l in nuvem["anotar"] if l[0] == alvo)
+    eixos.scatter([ponto[1]], [ponto[2]], s=150, facecolors="none",
+                  edgecolors=tema["tinta"], linewidths=2.0, zorder=7)
+    eixos.annotate(
+        alvo, (ponto[1], ponto[2]), textcoords="offset points", xytext=(0, 14),
+        ha="center", fontsize=10, color=tema["tinta"], fontweight="bold", zorder=8,
+    )
+
+    eixos.set_xlabel(
+        "ICF — inverse corpus frequency  (≈ −log da frequência; à esquerda = comum)",
+        color=tema["tinta2"], fontsize=10, labelpad=8,
+    )
+    eixos.set_ylabel("entropia da abertura (bits)", color=tema["tinta2"],
+                     fontsize=10, labelpad=8)
+    eixos.set_title(
+        "Informar muito e poder ser a resposta são objetivos opostos",
+        color=tema["tinta"], fontsize=13, pad=36, loc="left", fontweight="medium",
+    )
+    eixos.text(
+        0, 1.012,
+        f"a fronteira de Pareto tem {len(fronteira)} palavras; toda candidata a "
+        "melhor abertura desta investigação está nela\n(recorte no topo: a nuvem "
+        "continua até ~1,7 bit)",
+        transform=eixos.transAxes, fontsize=8.5, color=tema["apagada"], va="bottom",
+    )
+    eixos.set_ylim(piso, teto)
+
+    aplicar_tema(figura, [eixos], tema)
+    figura.tight_layout()
+    sufixo = "" if modo == "claro" else "_dark"
+    caminho = DIR_RESULTADOS / f"fronteira_h_icf{sufixo}.png"
+    figura.savefig(caminho, facecolor=tema["superficie"])
+    plt.close(figura)
+    return caminho
+
+
+def tabela_arrependimento(experimento: dict) -> list[str]:
+    """A matriz de arrependimento em texto, para a table view de `tabela.md`."""
+    dados = experimento["arrependimento"]
+    mundos, aberturas = dados["mundos"], dados["aberturas"]
+    linhas = [
+        "## Arrependimento por mundo — qual abertura é a menos pior",
+        "",
+        "Média penalizada em cada mundo (respostas cortadas, léxico inteiro "
+        "digitável), e entre parênteses o quanto a abertura perde para a melhor "
+        "daquele mundo.",
+        "",
+        "| abertura | " + " | ".join(mundos) + " | pior caso |",
+        "|" + "---|" * (len(mundos) + 2),
+    ]
+    for palavra in aberturas:
+        celulas = [
+            f"{dados['medias'][palavra][m]:.3f} (+{dados['arrependimento'][palavra][m]:.3f})"
+            for m in mundos
+        ]
+        marca = " **←**" if palavra == dados["vencedora_minimax"] else ""
+        linhas.append(
+            f"| {palavra} | " + " | ".join(celulas)
+            + f" | {dados['pior_caso'][palavra]:.3f}{marca} |"
+        )
+    linhas += ["", f"Menor arrependimento de pior caso: **{dados['vencedora_minimax']}**.", ""]
+    return linhas
+
+
+def tabela_markdown(blocos: dict[str, list[dict]],
+                    extras: list[str] | None = None) -> Path:
     """Table view: todo valor dos gráficos também legível como texto."""
     linhas = ["# Resultados do benchmark", ""]
+    linhas += extras or []
     for titulo, resultados in blocos.items():
         if not resultados:
             continue
@@ -352,8 +609,17 @@ def main() -> None:
                 print(f"  {grafico_temperatura(varredura, modo)}")
             break
 
-    if blocos:
-        print(f"  {tabela_markdown(blocos)}")
+    extras: list[str] = []
+    serao = carregar("serao.json")
+    if serao:
+        experimento = serao["experimento"]
+        extras = tabela_arrependimento(experimento)
+        for modo in TEMAS:
+            print(f"  {grafico_grade_n_t(experimento, modo)}")
+            print(f"  {grafico_fronteira(experimento, modo)}")
+
+    if blocos or extras:
+        print(f"  {tabela_markdown(blocos, extras)}")
     else:
         print("nada a analisar — rode o benchmark primeiro")
 

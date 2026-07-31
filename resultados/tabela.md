@@ -1,5 +1,20 @@
 # Resultados do benchmark
 
+## Arrependimento por mundo — qual abertura é a menos pior
+
+Média penalizada em cada mundo (respostas cortadas, léxico inteiro digitável), e entre parênteses o quanto a abertura perde para a melhor daquele mundo.
+
+| abertura | N=300 | N=1500 | N=6046 | pior caso |
+|---|---|---|---|---|
+| tarso | 2.770 (+0.010) | 3.266 (+0.003) | 3.848 (+0.000) | 0.010 |
+| tosar | 2.780 (+0.020) | 3.287 (+0.024) | 3.890 (+0.042) | 0.042 |
+| sorte | 2.760 (+0.000) | 3.263 (+0.000) | 3.849 (+0.001) | 0.001 **←** |
+| serão | 2.787 (+0.027) | 3.331 (+0.068) | 3.906 (+0.057) | 0.068 |
+| tirão | 2.760 (+0.000) | 3.292 (+0.029) | 3.860 (+0.012) | 0.029 |
+| cairo | 2.783 (+0.023) | 3.282 (+0.019) | 3.862 (+0.013) | 0.023 |
+
+Menor arrependimento de pior caso: **sorte**.
+
 ## Comparação de estratégias — bateria realista
 
 | estratégia | T | média | média penal. | vitória | 1 | 2 | 3 | 4 | 5 | 6 | não resolveu | s/jogo |

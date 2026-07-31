@@ -28,8 +28,12 @@ data/matriz_padroes.json
 # é uma busca na árvore de decisão a partir das 6.046 candidatas e leva dezenas de
 # minutos. Sem ela versionada, `--nivel 3` seria inutilizável na primeira partida.
 
-# O léxico final (termo_lexico_5letras.txt) e os PNGs/JSONs de resultados/ FICAM
-# versionados: são o que o README referencia e o que se quer comparar entre
-# execuções. Os logs de execução, não — são ruído e carregam o caminho absoluto
-# da máquina que rodou o benchmark.
+# De resultados/, só os PNGs e a tabela.md ficam versionados — não porque sejam
+# menos derivados que o resto, mas porque são a superfície de leitura do README:
+# quem abre o repositório no GitHub vê os gráficos sem clonar nem rodar nada.
+#
+# Os JSONs do benchmark saem: são a entrada dessas figuras, não a saída, e se
+# regeneram com `benchmark.py`. Os logs, idem, e ainda carregam o caminho
+# absoluto da máquina que rodou.
+resultados/*.json
 resultados/log_*.txt

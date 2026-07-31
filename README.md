@@ -261,6 +261,14 @@ python benchmark.py --nivel3
 ```
 
 ```bash
+python benchmark.py --serao
+```
+
+```bash
+python benchmark.py --catalogo
+```
+
+```bash
 python analise.py
 ```
 
@@ -298,8 +306,11 @@ baixadas e os artefatos gerados.
 
 Os números abaixo seguem a mesma cadeia da seção anterior: primeiro o léxico sobre
 o qual tudo repousa, depois a abertura, depois **quanto cada nível vale em
-tentativas**. Todos saem de `benchmark.py` e estão em [`resultados/`](resultados/)
-como JSON, PNG e [tabela em texto](resultados/tabela.md).
+tentativas**. Todos saem de `benchmark.py`, que grava os JSONs em
+[`resultados/`](resultados/); de lá o `analise.py` tira os gráficos e a
+[tabela em texto](resultados/tabela.md). Os JSONs não são versionados — cada
+comando abaixo regenera o seu —, mas os PNGs e a tabela sim, para que esta seção
+se leia inteira sem clonar nada.
 
 As quatro baterias foram medidas na mesma máquina, então as colunas `s/jogo` se
 comparam entre si. Elas são a única coisa aqui que depende do hardware: médias e
@@ -340,6 +351,242 @@ correção do 3B1B em uma linha: **maximizar bits não é minimizar tentativas.*
 
 O ranking de entropia com T=1, para referência: `tarso` (5,97), `tirão` (5,97),
 `tória` (5,95), `sertã` (5,94), `teira` (5,92), `tosar` (5,91).
+
+### E o `serão` dos fóruns?
+
+Pergunte a abertura ótima do Termo num fórum e a resposta é `serão`. Aqui ela não
+é ótima em nível nenhum — fica em **12º** no ranking de entropia. Vale entender
+por quê, porque o consenso não é bobo: ele otimiza um problema vizinho, e cada
+uma das três diferenças sozinha já bastaria para tirar `serão` do topo.
+
+**Diferença 1 — o léxico de palpites.** Quem está à frente dele:
+
+| # | palavra | H | posição em frequência |
+|---|---|---|---|
+| 1 | `tarso` | 5,975 | 1126/6046 |
+| 2 | `tirão` | 5,966 | 3632 |
+| 3–10 | `tória`, `sertã`, `teira`, `tosar`, `toira`, `tério`, `terso`, `teiró` | 5,95–5,86 | 2008–4936 |
+| 11 | `sorte` | 5,844 | 219 |
+| **12** | **`serão`** | **5,833** | **83** |
+
+As dez primeiras são palavras que ninguém digitaria por vontade própria. `serão`
+é a 83ª palavra mais comum do léxico: ele é o melhor palpite **entre os que um
+humano considera**, que é a restrição que um fórum aplica sem declarar.
+
+**Diferença 2 — a lista de respostas.** Restringindo as candidatas às N mais
+comuns, com peso uniforme dentro do corte, `serão` sobe — e no cenário completo
+do fórum, em que a mesma lista curta também limita os palpites, ele chega ao topo:
+
+| N | palpites = léxico | palpites = as próprias N |
+|---|---|---|
+| 200 | 7º | **1º** |
+| 300 | **2º** (atrás de `tirão`) | **1º** |
+| 500 | 8º | 2º (`certa`) |
+| 1000 | 7º | 2º (`corta`) |
+| 1500 | 9º | 3º (`corta`) |
+
+O ponto doce é uma lista de ~200–400 palavras comuns, que é mais ou menos o que
+se intui como "o que o Termo sorteia". **A recomendação é reproduzível**, então.
+
+Note que o dial `T` da §4.2 **não** chega lá: baixar a temperatura concentra a
+massa em meia dúzia de palavras em vez de truncar e uniformizar, e a abertura
+foge para outro lado.
+
+| T | ∞ | 2 | 1 | 0,5 | 0,3 | 0,1 |
+|---|---|---|---|---|---|---|
+| melhor abertura | `cairo` | `tirão` | `tarso` | `tarso` | `metro` | `mesto` |
+| posição de `serão` | 31ª | 6ª | 12ª | 109ª | 339ª | 946ª |
+
+Corte duro com uniforme dentro é um regime que o prior contínuo não cobre em
+ponto nenhum — e o mais próximo dele é T≈2, não T→0.
+
+**Diferença 3 — o objetivo.** Esta é a que sobrevive a tudo. No mundo de 300
+palavras, onde `serão` é o primeiro em bits, ele continua não sendo a melhor
+jogada. As rivais saem da busca do nível 3 nesse mesmo mundo, e a média é das 300
+partidas com a mesma política depois da abertura:
+
+| abertura | média |
+|---|---|
+| `sorte` | **2,770** |
+| `certa` | 2,773 |
+| `terça` | 2,780 |
+| `serão` | 2,810 |
+
+É a correção do 3B1B aplicada ao consenso popular: **`serão` maximiza os bits e
+mesmo assim custa 0,04 tentativa a mais.** No jogo de verdade — 6.046 possíveis,
+bateria realista — a conta fica em 3,669 contra os 3,581 de `tarso`.
+
+(As médias jogadas batem dígito a dígito com o `E` que a busca previu para cada
+abertura: com profundidade 1 o valor do nível 3 é exatamente `1 + Σ p·V_guloso`,
+e `V_guloso` é a política do nível 2 — que é a que joga da segunda rodada em
+diante. Os dois caminhos medindo a mesma coisa é um teste de sanidade de graça.)
+
+De onde vem a recomendação, então? Provavelmente do nível 1. Pelo score de
+frequência de letras sobre as palavras comuns, `serão` é **4º de 6.046**, e as
+três à frente (`oreia`, `orate`, `reato`) são obscuras — ele é a primeira palavra
+da lista que alguém reconhece. S, E, R, A, O são simplesmente as cinco letras
+mais frequentes, e é isso que a intuição dos fóruns está medindo. O léxico
+completo desfaz até isso: contra as 6.046, `serão` cai para 38º na mesma
+heurística.
+
+#### Só que ninguém sabe em que mundo está
+
+Todo o veredito acima — o nosso e o do fórum — supõe que a lista de respostas é
+conhecida. Ela não é: é uma hipótese nossa, e as três seções anteriores mostraram
+que a resposta muda com ela. Sob incerteza a pergunta certa não é "qual é a
+melhor?", e sim **"qual é a menos pior no seu pior mundo?"**.
+
+Aqui os mundos são *abertos*: o corte vale para as respostas, mas o léxico
+inteiro continua digitável — `tarso` não está entre as 300 mais comuns e mesmo
+assim é uma jogada legal. Média penalizada em cada mundo, e entre parênteses o
+que a abertura perde para a melhor daquele mundo:
+
+| abertura | | N=300 | N=1500 | N=6046 | **pior caso** |
+|---|---|---|---|---|---|
+| `sorte` | | 2,760 (+0,000) | 3,263 (+0,000) | 3,849 (+0,001) | **0,001** |
+| `tarso` | nível 2 | 2,770 (+0,010) | 3,266 (+0,003) | 3,848 (+0,000) | 0,010 |
+| `cairo` | | 2,783 (+0,023) | 3,282 (+0,019) | 3,862 (+0,013) | 0,023 |
+| `tirão` | | 2,760 (+0,000) | 3,292 (+0,029) | 3,860 (+0,012) | 0,029 |
+| `tosar` | nível 3 | 2,780 (+0,020) | 3,287 (+0,024) | 3,890 (+0,042) | 0,042 |
+| `serão` | fóruns | 2,787 (+0,027) | 3,331 (+0,068) | 3,906 (+0,057) | 0,068 |
+
+Três leituras, e a primeira é a que menos agrada aqui:
+
+- **`serão` é o pior dos seis.** Não é robusto: perde em todos os mundos, e mais
+  onde o mundo é grande. A crítica desta seção sobrevive à mudança de régua.
+- **`tosar`, a abertura da nossa CLI, é o segundo pior.** Ele foi otimizado sob o
+  prior de T=1, e estes mundos são uniformes — a especialização que o faz ganhar
+  0,54 tentativa na bateria realista é exatamente o que o penaliza quando a
+  premissa muda. É a mesma ressalva do nível 3, medida de outro ângulo.
+- **Ganha `sorte`, que nenhuma das análises anteriores havia eleito.** Ela é
+  ~ótima nos três mundos ao mesmo tempo (0,001 de arrependimento), e é a 219ª
+  palavra mais comum — perfeitamente digitável. Ela aparecia só como coadjuvante:
+  segunda no ranking do mundo curto, vencedora da busca do nível 3 lá.
+
+E a leitura de cima de tudo: **o pior arrependimento da tabela inteira é 0,07
+tentativa.** A discussão toda — fórum contra solver, nível 2 contra nível 3 —
+vale menos de um décimo de tentativa se a abertura for escolhida com um mínimo de
+cuidado. O que separa `serão` das outras não é ele ser ruim; é ser o único ponto
+da disputa que não sobrevive à troca de premissa.
+
+#### O mapa: os dois botões de uma vez
+
+As duas varreduras de uma dimensão só — cortar a lista, baixar o prior — parecem
+dar respostas contraditórias. São os dois eixos de um mapa, e vistas assim param
+de brigar. Cada célula é um mundo, e o nome escrito nela é a melhor abertura ali:
+
+![Grade (N, T)](resultados/grade_n_t.png)
+
+O território de `serão` é um bloco pequeno e bem delimitado: **N entre 200 e 300,
+com prior fraco (T≥2)**. Fora dali ele nunca é o melhor. As duas posições
+conhecidas estão marcadas, e agora se lê a distância entre elas — o padrão do
+projeto e a hipótese do fórum não são cantos opostos, são vizinhos separados por
+uma faixa em que `sorte` e `certa` mandam.
+
+Duas coisas que só o mapa mostra:
+
+- **`sorte` domina a coluna de T=1 na faixa do meio** (N de 300 a 1000), o que é
+  uma confirmação independente da tabela de arrependimento — dois métodos
+  diferentes, a mesma palavra.
+- **A coluna de T=0,1 é escura de cima a baixo, e isso não é vitória de ninguém.**
+  Com o prior tão concentrado, a melhor abertura do mundo vale 0,9 bit: não há o
+  que separar, e todas as jogadas empatam em quase-nada. O gráfico usa a distância
+  *relativa* justamente por isso — em bits absolutos aquele canto pareceria verde.
+
+#### A troca por trás de tudo
+
+Uma abertura quer duas coisas incompatíveis: separar muito o conjunto e poder ser
+a resposta. A fronteira de Pareto — as palavras em que ganhar numa exige perder na
+outra — tem **dez palavras**, e todas as candidatas que apareceram nesta
+investigação estão nela:
+
+![Entropia contra frequência](resultados/fronteira_h_icf.png)
+
+`muito` → `sobre` → `forma` → `parte` → `conta` → `noite` → `nesta` → **`serão`**
+→ **`sorte`** → **`tarso`**.
+
+Ninguém errou a conta: cada um escolheu um ponto diferente da mesma curva. O fórum
+parou em `serão` porque é o mais informativo *dentro* da faixa que ele considera
+plausível; o solver foi até `tarso`, a ponta da curva, porque não impõe faixa
+nenhuma. E `sorte` é o ponto entre os dois — 5,84 bits contra os 5,98 de `tarso`,
+com um terço do ICF — que é exatamente por que ele ganha quando o mundo é
+incerto.
+
+O gráfico também fecha a primeira diferença sem precisar de tabela: as dez
+melhores em entropia formam uma faixa inteira **à direita** da região das comuns.
+Ser informativo e ser plausível quase não se sobrepõem no português.
+
+#### O catálogo: qual palavra para qual cenário
+
+Juntando tudo, "qual é a abertura ótima do Termo" só tem resposta depois de três
+premissas declaradas: **o objetivo** (bits ou tentativas), **quais palavras podem
+cair** e **quais você aceita digitar**. Dezesseis palavras diferentes são ótimas
+em algum cenário.
+
+**Mundo completo** — qualquer uma das 6.046 pode cair:
+
+| objetivo | prior | abertura |
+|---|---|---|
+| nível 1 — letras mais frequentes | — | `oreia` |
+| nível 2 — bits | T→∞ | `cairo` (6,203 bits) |
+| nível 2 — bits | T=2 | `tirão` |
+| nível 2 — bits | **T=1 (padrão)** | **`tarso`** (5,975) |
+| nível 2 — bits | T=0,3 | `metro` |
+| nível 2 — bits | T=0,1 | `mesto` |
+| nível 3 — tentativas | **T=1 (padrão da CLI)** | **`tosar`** (E=3,009) |
+| nível 3 — tentativas | T→∞ | `tória` (E=3,825) |
+
+**Mundo aberto** — só as N mais comuns caem, mas o léxico inteiro é digitável:
+
+| N | ótimo em bits | ótimo em tentativas |
+|---|---|---|
+| 300 | `tirão` (5,913) | `sertã` (E=2,760) |
+| 1.500 | `tirão` (6,237) | `torça` (E=3,233) |
+| 6.046 | `cairo` (6,203) | `tória` (E=3,825) |
+
+**Mundo fechado** — respostas e palpites saem da mesma lista curta. É o cenário
+dos fóruns, e a coluna da direita é a que faltava:
+
+| N | ótimo em bits | ótimo em tentativas |
+|---|---|---|
+| 100 | `nesta` (5,439) | `nesta` (E=2,400) |
+| **200** | **`serão`** (5,725) | `norte` (E=2,670) |
+| **300** | **`serão`** (5,864) | `sorte` (E=2,770) |
+| 500 | `certa` (6,001) | `terça` (E=2,904) |
+| 1.000 | `corta` (6,069) | `certo` (E=3,135) |
+| 1.500 | `corta` (6,185) | `certa` (E=3,261) |
+| 3.000 | `cairo` (6,160) | `corta` (E=3,529) |
+| 6.046 | `cairo` (6,203) | `tória` (E=3,825) |
+
+Duas coisas saltam desta tabela. A primeira é que **`serão` não é o ótimo de
+tentativas em N nenhum** — nem nos dois cortes onde ele é o campeão em bits. A
+crítica da terceira diferença não era um detalhe do mundo de 300: vale na faixa
+inteira. A segunda é que a coluna da direita é povoada por palavras banais —
+`norte`, `sorte`, `terça`, `certo`, `certa`, `corta` — enquanto a da esquerda
+puxa para `cairo` e `tória`. Minimizar tentativas prefere palavras que podem ser
+a resposta; maximizar bits, não.
+
+(A última linha das duas últimas tabelas é a mesma: sem corte, mundo aberto e
+fechado são o mesmo mundo. Os dois caminhos dão `tória` com E=3,8252 — é uma
+checagem de consistência de graça.)
+
+#### Para escolher uma na prática
+
+| se você… | jogue | por quê |
+|---|---|---|
+| não quer apostar em premissa nenhuma | **`sorte`** | nunca fica a mais de 0,001 tentativa do ótimo nos três mundos testados, e é a 219ª palavra mais comum |
+| confia no prior do projeto | **`tosar`** | é o que a CLI já sugere: menor E[tentativas] com T=1 sobre o léxico inteiro |
+| acha que só palavras bem comuns caem, e mede em **bits** | **`serão`** | é o ótimo do mundo fechado de 200–300 — aqui os fóruns estão certos |
+| acha que só palavras bem comuns caem, e mede em **tentativas** | **`sorte`** (N≈300) ou **`certa`** (N≈500–1500) | ganhar cedo vale mais que informar muito |
+
+O catálogo sai de `python benchmark.py --catalogo`, que grava
+`resultados/catalogo.json`. Ele roda separado porque a última linha do mundo
+fechado é a busca completa do nível 3 sobre as 6.046 — sozinha, ~5 min dos ~14 do
+comando.
+
+O resto da seção sai de `python benchmark.py --serao` seguido de
+`python analise.py`: o primeiro grava `resultados/serao.json`, o segundo tira
+dele os dois gráficos acima.
 
 ### Nível 1 → nível 2: a entropia compensa?
 
