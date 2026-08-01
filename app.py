@@ -215,13 +215,16 @@ CSS = f"""
 # rótulos dos botões ao pé da letra — instrução que parafraseia o botão faz o
 # usuário procurar na tela um controle que não existe com aquele nome.
 #
-# `details` nosso e não `st.expander` porque o do Streamlit não fecha quando a
-# gente muda de ideia: `expanded` é só o valor inicial, e trocar a `key` também
-# não remonta o componente — medido, o painel que abriu na primeira tela ficava
-# com a seta de "fechado" e o conteúdo de 339px aberto na tela do mesmo jeito.
-# O `open` daqui é atributo de HTML, redesenhado a cada rerun, e obedece.
+# NASCE RECOLHIDO, e fica a cargo do usuário abrir. Aberto de saída, o bloco
+# empurra o cartão da sugestão para fora da primeira dobra — quem já sabe jogar
+# paga o preço todo dia para que quem não sabe leia uma vez. Recolhido, o custo
+# é uma linha, e a linha diz o que há atrás dela.
+#
+# `details` nosso e não `st.expander` porque este arquivo já desenha o próprio
+# HTML e o bloco herda o CSS da marca junto com o resto — sem depender de um
+# seletor interno do Streamlit para vestir o painel.
 COMO_USAR = f"""
-<details class="dt-ajuda" ABERTO>
+<details class="dt-ajuda">
 <summary>como usar</summary>
 <ol>
 <li>Jogue no Termo a palavra do cartão verde. Para jogar outra, digite-a no campo
@@ -239,10 +242,6 @@ sugestão seguinte. Repita até acertar.</li>
 trocar o tipo de resolvedor e o tamanho do léxico.</p>
 </details>
 """
-
-
-def ajuda_html(aberta: bool) -> str:
-    return COMO_USAR.replace("ABERTO", "open" if aberta else "")
 
 
 # ------------------------------------------------------------------- motor
@@ -469,16 +468,13 @@ espaco = (
 st.html(
     f'<p class="dt-sub">nível {nivel} · T = {bruto} · {html.escape(espaco)}</p>'
 )
+# Acima do tabuleiro, e não depois: quem precisa da ajuda precisa ANTES de mexer
+# nas casas. Recolhida, cabe na mesma dobra que o cartão da sugestão.
+st.html(COMO_USAR)
 
 historico = tuple(estado.historico)
 venceu = bool(historico) and historico[-1][1] == PADRAO_VITORIA
 acabou = venceu or len(historico) >= N_MAX_TENTATIVAS
-
-# Aberta só enquanto não há rodada nenhuma. Quem chegou agora não tem como
-# adivinhar que as casas são clicáveis nem que o campo é opcional; quem já
-# registrou uma rodada descobriu as duas coisas e não precisa mais do bloco
-# empurrando o cartão para baixo a cada jogada.
-st.html(ajuda_html(not historico))
 
 # A abertura do nível 3 só vem pronta na configuração versionada. Fora dela são
 # ~16 min de busca na árvore — inaceitável numa aba de navegador, então avisamos
