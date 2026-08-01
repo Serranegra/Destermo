@@ -183,8 +183,66 @@ CSS = f"""
    de lugar"; aqui ele queria dizer "também pode ser a resposta" — dois sentidos
    sem relação para a mesma cor, na mesma tela. O dourado volta a ter um só. */
 .dt-alt b {{ color:inherit; font-weight:700; }}
+
+/* AJUDA. A numeração vem de um contador de CSS, e não do marcador nativo da
+   lista, porque o número precisa alinhar com um texto de várias linhas — o
+   marcador de fábrica empurra o recuo para o lado. */
+.dt-ajuda {{ font-size:.88rem; line-height:1.5;
+             border:1px solid rgba(110,92,98,.35); border-radius:8px;
+             padding:.55rem .9rem; margin:0 0 1rem; }}
+.dt-ajuda[open] {{ padding-bottom:.9rem; }}
+.dt-ajuda summary {{ cursor:pointer; font-size:.85rem; letter-spacing:.06em;
+                     text-transform:uppercase; opacity:.72;
+                     list-style-position:inside; }}
+.dt-ajuda summary::marker {{ color:{VERDE}; }}
+.dt-ajuda summary:focus-visible {{ outline:2px solid {VERDE}; outline-offset:3px;
+                                   border-radius:4px; }}
+.dt-ajuda ol {{ list-style:none; margin:.8rem 0 0; padding:0;
+                counter-reset:passo; }}
+.dt-ajuda li {{ counter-increment:passo; position:relative;
+                padding-left:1.6rem; margin-bottom:.55rem; }}
+.dt-ajuda li::before {{ content:counter(passo); position:absolute; left:0; top:0;
+                        font-family:{MONO}; font-weight:700; color:{VERDE}; }}
+.dt-ajuda p {{ margin:.6rem 0 0; opacity:.7; }}
+/* Amostra da cor no meio da frase: a legenda diz o que cada cor quer dizer, e
+   dizê-lo com a própria cor poupa o usuário de mapear nome para casa. */
+.dt-amostra {{ display:inline-block; width:.72em; height:.72em; border-radius:3px;
+               margin-right:.2em; vertical-align:baseline; }}
 </style>
 """
+
+# Um passo por ação do usuário, na ordem em que a tela as pede. O texto cita os
+# rótulos dos botões ao pé da letra — instrução que parafraseia o botão faz o
+# usuário procurar na tela um controle que não existe com aquele nome.
+#
+# `details` nosso e não `st.expander` porque o do Streamlit não fecha quando a
+# gente muda de ideia: `expanded` é só o valor inicial, e trocar a `key` também
+# não remonta o componente — medido, o painel que abriu na primeira tela ficava
+# com a seta de "fechado" e o conteúdo de 339px aberto na tela do mesmo jeito.
+# O `open` daqui é atributo de HTML, redesenhado a cada rerun, e obedece.
+COMO_USAR = f"""
+<details class="dt-ajuda" ABERTO>
+<summary>como usar</summary>
+<ol>
+<li>Jogue no Termo a palavra do cartão verde. Para jogar outra, digite-a no campo
+e aperte <b>Usar esta palavra</b> — o tabuleiro passa a mostrá-la.</li>
+<li>Copie o resultado do Termo: clique em cada casa da linha ativa até ela ficar
+da cor certa —
+<span class="dt-amostra" style="background:{XISTO}"></span>ausente,
+<span class="dt-amostra" style="background:{DOURADO}"></span>fora de lugar,
+<span class="dt-amostra" style="background:{VERDE}"></span>no lugar. Casa que você
+não clicar conta como ausente.</li>
+<li>Aperte <b>Registrar rodada</b>. A linha sobe para o tabuleiro e sai a
+sugestão seguinte. Repita até acertar.</li>
+</ol>
+<p>Errou uma cor? <b>Voltar</b> desfaz a última rodada. Na barra lateral dá para
+trocar o tipo de resolvedor e o tamanho do léxico.</p>
+</details>
+"""
+
+
+def ajuda_html(aberta: bool) -> str:
+    return COMO_USAR.replace("ABERTO", "open" if aberta else "")
 
 
 # ------------------------------------------------------------------- motor
@@ -415,6 +473,12 @@ st.html(
 historico = tuple(estado.historico)
 venceu = bool(historico) and historico[-1][1] == PADRAO_VITORIA
 acabou = venceu or len(historico) >= N_MAX_TENTATIVAS
+
+# Aberta só enquanto não há rodada nenhuma. Quem chegou agora não tem como
+# adivinhar que as casas são clicáveis nem que o campo é opcional; quem já
+# registrou uma rodada descobriu as duas coisas e não precisa mais do bloco
+# empurrando o cartão para baixo a cada jogada.
+st.html(ajuda_html(not historico))
 
 # A abertura do nível 3 só vem pronta na configuração versionada. Fora dela são
 # ~16 min de busca na árvore — inaceitável numa aba de navegador, então avisamos
