@@ -302,14 +302,10 @@ def sugerir(chave: tuple, historico: tuple[tuple[str, str], ...]) -> Sugestao:
     """
     motor = obter_motor(*chave)
     if not historico:
-        # Mesma abertura que a CLI joga por padrão: a de maior entropia, e não a
-        # que o nível 3 acha ótima sob o prior (ver `abertura_robusta`). As duas
-        # telas do projeto não podem discordar da primeira palavra.
-        return (
-            motor.abertura_robusta()
-            if isinstance(motor, MotorNivel3)
-            else motor.abertura()
-        )
+        # A mesma palavra que a CLI joga, nos dois resolvedores e em qualquer T
+        # (ver `ABERTURA_PADRAO`). As duas telas do projeto não podem discordar da
+        # primeira jogada, e ela não muda quando se mexe na barra lateral.
+        return motor.abertura_padrao()
     candidatas, _ = reconstruir(motor, historico)
     return motor.escolher(candidatas, len(historico) + 1)
 

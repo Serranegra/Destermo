@@ -75,7 +75,7 @@ import textwrap
 
 import numpy as np
 
-from .entropia import Motor, Sugestao
+from .entropia import MOTIVO_ABERTURA_PADRAO, Motor, Sugestao
 from .entropia import carregar_motor as carregar_nivel2
 from .feedback import PADRAO_VITORIA
 from .lexico import DIR_DADOS
@@ -565,41 +565,40 @@ class MotorNivel3:
             )
         return sugestao
 
-    def abertura_robusta(self, n_alternativas: int = 5) -> Sugestao:
-        """Abertura do nível 2, com a política do nível 3 da segunda jogada em diante.
+    def abertura_padrao(self, n_alternativas: int = 5) -> Sugestao:
+        """`ABERTURA_PADRAO` também aqui, com o E[tentativas] dela anotado.
 
-        `abertura` devolve a palavra que minimiza E[tentativas] **sob o prior de
-        T=1** (`tosar`). Esta devolve a de maior entropia (`tarso`), que é a mesma
-        que empata em primeiro no minimax de arrependimento sobre sete
-        distribuições de secreta — ver "Robustez da abertura" no README. As duas
-        diferem em 0,013 tentativa se o prior estiver certo, e `tosar` perde 0,04
-        se ele estiver errado; é essa assimetria que faz da robusta o padrão da
-        CLI, com a ótima atrás de `--abertura otima`.
+        A palavra é a mesma dos dois motores — o nível 3 não tem por que abrir
+        diferente do nível 2 numa escolha que vale ≤ 0,07 tentativa e que o usuário
+        digita todo dia. O que ele acrescenta é o número: o E da abertura fixa sai
+        da lista de alternativas da abertura ótima, que já é uma tabela de
+        E[tentativas] por abertura sob esta mesma política. Sem cache dela (T fora
+        das versionadas), a sugestão sai sem o E em vez de custar ~9 min de busca.
 
-        Só a primeira jogada muda: da segunda em diante é `escolher`, igual. E não
-        recalcula nada — a palavra sai do cache do nível 2 e o E[tentativas] dela
-        sai da lista de alternativas da abertura do nível 3, que é justamente uma
-        tabela de E por abertura sob esta mesma política.
+        Só a primeira jogada muda: da segunda em diante é `escolher`, igual.
         """
-        sugestao = self.motor.abertura(n_alternativas)
+        sugestao = self.motor.abertura_padrao(n_alternativas)
+        if sugestao.motivo != MOTIVO_ABERTURA_PADRAO:
+            # Léxico sem a palavra fixa. O nível 2 respondeu com o ótimo DELE; aqui
+            # o ótimo é outro, e é o nosso que vale.
+            return self.abertura(n_alternativas)
         _, guardada = self._abertura_guardada()
-        if guardada is not None:
-            valores = {guardada["palavra"]: guardada["valor_esperado"]}
-            valores.update(
-                {palavra: valor for palavra, valor, _ in guardada["alternativas"]}
-            )
-            sugestao.valor_esperado = valores.get(sugestao.palavra)
-        esperado = (
-            "" if sugestao.valor_esperado is None
-            else f", E={sugestao.valor_esperado:.3f} tentativas"
-        )
-        # Sem citar "nível 3" na frase: ela também vai para a tela do app, que não
-        # expõe a numeração interna dos algoritmos (ver o cabeçalho de `app.py`).
-        sugestao.motivo = (
-            f"abertura de maior entropia ({sugestao.entropia:.3f} bits{esperado}) — "
-            "a que menos depende do prior estar certo; só a 1ª jogada sai deste "
-            "critério"
-        )
+        if guardada is None:
+            return sugestao
+
+        tabela = [(guardada["palavra"], guardada["valor_esperado"], True)]
+        tabela += [tuple(alt) for alt in guardada["alternativas"]]
+        sugestao.valor_esperado = dict(
+            (palavra, valor) for palavra, valor, _ in tabela
+        ).get(sugestao.palavra)
+        if sugestao.valor_esperado is not None:
+            # Com o E anotado, as alternativas passam a ser as da tabela — o float
+            # delas tem que estar na mesma moeda do campo principal (§ `Sugestao`),
+            # e as que vieram do nível 2 estão em bits. A ótima preterida encabeça
+            # a lista: é a informação que ela ainda carrega depois de perder a vez.
+            sugestao.alternativas = [
+                alt for alt in tabela if alt[0] != sugestao.palavra
+            ][:n_alternativas]
         return sugestao
 
 

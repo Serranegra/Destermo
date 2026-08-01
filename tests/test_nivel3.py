@@ -374,13 +374,13 @@ def test_abertura_vai_e_volta_do_cache(palavras_mini, tmp_path, monkeypatch):
     assert not outro.abertura_em_cache()
 
 
-def test_abertura_robusta_e_a_do_nivel_2_com_o_e_do_nivel_3(
+def test_abertura_padrao_e_a_palavra_fixa_com_o_e_do_nivel_3(
     palavras_mini, tmp_path, monkeypatch
 ):
-    """A abertura padrão da CLI: palavra do nível 2, valor esperado do nível 3.
+    """A abertura das interfaces: palavra fixa, valor esperado do nível 3.
 
-    As duas metades vêm de caches diferentes e nenhuma delas é recalculada — é o
-    que faz a opção custar segundos em vez dos ~9 min da busca na raiz.
+    O E não é recalculado — sai da tabela de alternativas da abertura ótima, que é
+    o que faz a opção custar segundos em vez dos ~9 min da busca na raiz.
     """
     monkeypatch.setattr(nivel3, "ARQ_ABERTURA", tmp_path / "aberturas_nivel3.json")
     monkeypatch.setattr(entropia, "ARQ_ABERTURA", tmp_path / "aberturas.json")
@@ -389,20 +389,56 @@ def test_abertura_robusta_e_a_do_nivel_2_com_o_e_do_nivel_3(
     motor = Motor(lexico, matriz=matriz)
     motor3 = MotorNivel3(motor, beam=5, profundidade=1)
 
-    robusta = motor3.abertura_robusta()
-    assert robusta.palavra == motor.abertura().palavra
-    # Sem a abertura do nível 3 em cache não há de onde tirar o E, e a sugestão
-    # sai mesmo assim — só sem o número.
-    assert robusta.valor_esperado is None
-
+    # A palavra fixa do projeto não existe no léxico de brinquedo: a segunda melhor
+    # abertura daqui faz o papel dela, que é o caso que o teste quer exercitar — uma
+    # palavra imposta que NÃO é a que o nível 3 escolheria.
     otima = motor3.abertura()
-    robusta = motor3.abertura_robusta()
-    assert robusta.palavra == motor.abertura().palavra
-    esperados = {otima.palavra: otima.valor_esperado}
-    esperados.update({palavra: valor for palavra, valor, _ in otima.alternativas})
-    assert robusta.valor_esperado == esperados[robusta.palavra]
+    segunda, valor_da_segunda, _ = otima.alternativas[0]
+    monkeypatch.setattr(entropia, "ABERTURA_PADRAO", segunda)
+
+    padrao = motor3.abertura_padrao()
+    assert padrao.palavra == segunda
+    assert padrao.motivo == entropia.MOTIVO_ABERTURA_PADRAO
+    assert padrao.valor_esperado == valor_da_segunda
     # E o E da ótima é, por definição, o menor dos dois.
-    assert otima.valor_esperado <= robusta.valor_esperado
+    assert otima.valor_esperado <= padrao.valor_esperado
+    # A ótima preterida não some da tela: vira a primeira alternativa.
+    assert padrao.alternativas[0][0] == otima.palavra
+
+
+def test_abertura_padrao_sai_sem_e_quando_nao_ha_de_onde_tira_lo(
+    palavras_mini, tmp_path, monkeypatch
+):
+    """Sem a abertura ótima em cache, a fixa responde mesmo assim — só sem o E.
+
+    É o que impede um `--t` qualquer de custar os ~9 min da busca na raiz.
+    """
+    monkeypatch.setattr(nivel3, "ARQ_ABERTURA", tmp_path / "aberturas_nivel3.json")
+    monkeypatch.setattr(entropia, "ARQ_ABERTURA", tmp_path / "aberturas.json")
+    monkeypatch.setattr(entropia, "ABERTURA_PADRAO", palavras_mini[-1])
+    lexico = _mini_lexico(palavras_mini, 1.0)
+    matriz = construir_matriz(palavras_mini, verboso=False)
+    motor3 = MotorNivel3(Motor(lexico, matriz=matriz), beam=5, profundidade=1)
+
+    padrao = motor3.abertura_padrao()
+    assert padrao.palavra == palavras_mini[-1]
+    assert padrao.valor_esperado is None
+    assert padrao.entropia > 0
+    assert not motor3.abertura_em_cache()
+
+
+def test_abertura_padrao_cai_no_otimo_se_a_palavra_nao_existe(
+    palavras_mini, tmp_path, monkeypatch
+):
+    """Léxico sem a palavra fixa: responde o ótimo em vez de estourar."""
+    monkeypatch.setattr(nivel3, "ARQ_ABERTURA", tmp_path / "aberturas_nivel3.json")
+    monkeypatch.setattr(entropia, "ARQ_ABERTURA", tmp_path / "aberturas.json")
+    lexico = _mini_lexico(palavras_mini, 1.0)
+    matriz = construir_matriz(palavras_mini, verboso=False)
+    motor3 = MotorNivel3(Motor(lexico, matriz=matriz), beam=5, profundidade=1)
+
+    assert entropia.ABERTURA_PADRAO not in lexico.indice_sonda
+    assert motor3.abertura_padrao().palavra == motor3.abertura().palavra
 
 
 def test_escolha_com_cache_devolve_o_mesmo(motor, estado):

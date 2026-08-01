@@ -45,6 +45,23 @@ LIMIAR_POUCAS = 12
 
 N_MAX_TENTATIVAS = 6
 
+# A palavra que as interfaces abrem, em qualquer temperatura e nos dois motores.
+#
+# Não é o ótimo de nenhum critério isolado, e é essa a graça: `tarso` é a de maior
+# entropia sob o prior do projeto E a que empata em primeiro no minimax de
+# arrependimento sobre sete distribuições de secreta, da lista bem curada à
+# uniforme (README, "E se a própria distribuição for desconhecida?"). As ótimas de
+# cada T vencem no regime em que foram calculadas e pagam no outro; esta não tem
+# regime ruim. Como a abertura inteira vale ≤ 0,07 tentativa, trocar o ótimo local
+# pela estabilidade sai barato — e uma abertura que não muda quando o usuário mexe
+# no T é uma palavra a menos para decorar.
+#
+# `abertura()` continua devolvendo o ótimo calculado: é o que o benchmark mede e o
+# que `analise.py` tabula por temperatura. A palavra fixa é escolha de interface, e
+# mora em `abertura_padrao()`.
+ABERTURA_PADRAO = "tarso"
+MOTIVO_ABERTURA_PADRAO = "melhor abertura - robusto a palavras comuns e raras"
+
 
 def _alinhar(prior: np.ndarray, n: int) -> np.ndarray:
     """Prior no tamanho exato do espaço de tentativa, completando com zeros."""
@@ -168,6 +185,25 @@ class Motor:
             entropias[i0:i1] = -(baldes * vista).sum(axis=1)
 
         return entropias
+
+    def entropia_de(self, palpite: int, candidatas: np.ndarray) -> float:
+        """Entropia (bits) de UMA sonda, sem varrer as outras 6.045.
+
+        Mesma conta de `entropias`, numa linha só da matriz. Existe para anotar os
+        bits de uma jogada imposta de fora (`abertura_padrao`), onde a varredura
+        inteira seria desperdício.
+        """
+        m = len(candidatas)
+        if m <= 1:
+            return 0.0
+        pesos = self.lexico.prior[candidatas]
+        soma = pesos.sum()
+        pesos = pesos / soma if soma > 0 else np.full(m, 1.0 / m)
+        baldes = np.bincount(
+            self.matriz[palpite, candidatas], weights=pesos, minlength=N_PADROES
+        )
+        positivos = baldes[baldes > 0]
+        return float(-(positivos * np.log2(positivos)).sum())
 
     def _entropias_poucas(
         self, candidatas: np.ndarray, pesos: np.ndarray
@@ -348,6 +384,37 @@ class Motor:
             ARQ_ABERTURA.write_text(json.dumps(cache, ensure_ascii=False, indent=2),
                                     encoding="utf-8")
         return sugestao
+
+    def abertura_padrao(self, n_alternativas: int = 5) -> Sugestao:
+        """A abertura que as interfaces jogam: `ABERTURA_PADRAO`, em qualquer T.
+
+        O ótimo continua sendo calculado — é dele que saem as alternativas, e é ele
+        que responde quando a palavra fixa não está no léxico em uso (um recorte de
+        teste, outra fonte de dados). O que muda é qual das duas vai na frente.
+        """
+        indice = self.lexico.indice_sonda.get(ABERTURA_PADRAO)
+        otima = self.abertura(n_alternativas)
+        if indice is None or indice >= self.n_sondas:
+            return otima
+        if otima.indice == indice:
+            otima.motivo = MOTIVO_ABERTURA_PADRAO
+            return otima
+
+        # A ótima do critério vira a primeira alternativa: é a informação que ela
+        # ainda carrega depois de perder a vez.
+        alternativas = [(otima.palavra, otima.entropia, True)]
+        alternativas += [
+            alt for alt in otima.alternativas if normalizar(alt[0]) != ABERTURA_PADRAO
+        ]
+        palavra = self.lexico.sondas_exibicao[indice]
+        return Sugestao(
+            indice,
+            palavra,
+            self.entropia_de(indice, self.todas_candidatas()),
+            MOTIVO_ABERTURA_PADRAO,
+            indice < len(self.lexico),
+            alternativas[:max(n_alternativas, 1)],
+        )
 
 
 def carregar_motor(
