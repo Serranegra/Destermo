@@ -159,16 +159,27 @@ def carregar_matriz(
 
     print(f"construindo matriz de padrões {len(palavras)}x{len(secretas)} ...")
     matriz = construir_matriz(palavras, secretas)
-    caminho.parent.mkdir(parents=True, exist_ok=True)
-    np.save(caminho, matriz)
-    arq_meta.write_text(
-        json.dumps(
-            {"assinatura": assinatura, "n": len(secretas), "sondas": len(palavras)},
-            indent=2,
-        ),
-        encoding="utf-8",
-    )
-    print(f"  salva em {caminho} ({caminho.stat().st_size / 1e6:.0f} MB)")
+    # Guardar em disco é otimização, não requisito: a matriz já está na memória e
+    # o chamador vai usá-la de qualquer jeito. Num servidor com sistema de
+    # arquivos só de leitura — comum em deploy — a gravação falha, e derrubar a
+    # página por causa de um cache que não pôde ser escrito seria trocar seis
+    # segundos por um erro. Paga-se a reconstrução a cada reinício, e pronto.
+    # A META vai por último e depois de a matriz estar no lugar: é ela que
+    # autoriza a leitura, então um processo morto no meio deixa um .npy órfão que
+    # ninguém lê, em vez de um carimbo de validade sobre um arquivo pela metade.
+    try:
+        caminho.parent.mkdir(parents=True, exist_ok=True)
+        np.save(caminho, matriz)
+        arq_meta.write_text(
+            json.dumps(
+                {"assinatura": assinatura, "n": len(secretas), "sondas": len(palavras)},
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+        print(f"  salva em {caminho} ({caminho.stat().st_size / 1e6:.0f} MB)")
+    except OSError as erro:
+        print(f"  não deu para salvar em {caminho} ({erro}); segue em memória")
     return matriz
 
 

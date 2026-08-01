@@ -1,4 +1,12 @@
+# O que o app web precisa para subir — e só isso. É este arquivo que as
+# plataformas de deploy instalam, então o que entra aqui vira tempo de boot e
+# superfície de dependência de toda instância. `matplotlib` (os gráficos de
+# `analise.py`) e `pytest` moram em requirements-dev.txt.
+#
+# O piso do Streamlit é 1.46 e não 1.45: a linha em edição do tabuleiro usa
+# `st.container(horizontal=..., horizontal_alignment=...)`, que só existe a
+# partir dessa versão — com 1.45 o app sobe e quebra no primeiro rerun. O teto em
+# 2 é porque um major pode mexer em layout e tema, e uma página divulgada não
+# deve mudar de forma sozinha entre dois deploys.
 numpy>=1.24
-matplotlib>=3.7
-pytest>=7.0
-streamlit>=1.45
+streamlit>=1.46,<2

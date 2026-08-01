@@ -1,0 +1,6 @@
+# Tudo do app, mais o que só quem mexe no projeto usa: os gráficos de
+# `analise.py` e a bateria de testes. Quem clona para desenvolver instala este.
+-r requirements.txt
+
+matplotlib>=3.7
+pytest>=7.0

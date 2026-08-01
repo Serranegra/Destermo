@@ -69,13 +69,18 @@ import ast
 import functools
 import hashlib
 import inspect
-import json
 import math
 import textwrap
 
 import numpy as np
 
-from .entropia import MOTIVO_ABERTURA_PADRAO, Motor, Sugestao
+from .entropia import (
+    MOTIVO_ABERTURA_PADRAO,
+    Motor,
+    Sugestao,
+    gravar_cache_json,
+    ler_cache_json,
+)
 from .entropia import carregar_motor as carregar_nivel2
 from .feedback import PADRAO_VITORIA
 from .lexico import DIR_DADOS
@@ -96,6 +101,27 @@ PROFUNDIDADE = 1
 # 7 é "a partida inteira jogada em vão", e a essa altura qualquer valor acima de
 # ~2 já basta para a busca nunca escolher perder.
 PENALIDADE_DERROTA = 7.0
+
+# Acima de quantas candidatas `escolher_com_teto` desiste da busca e responde o
+# nível 2. É um parâmetro de INTERFACE, não do solver — ver o método para a
+# medição que fixa o valor. `escolher` continua sem teto nenhum.
+TETO_INTERATIVO = 250
+
+# Quantos estados a memoização da busca guarda antes de ser zerada, no caminho
+# interativo. Os caches do motor foram desenhados para um PROCESSO CURTO — uma
+# bateria do benchmark, uma partida na CLI —, onde crescer sem limite é o certo:
+# o processo morre no fim e o teto de 500.000 de `_palpites` nunca é alcançado.
+# Servindo uma página, o mesmo motor vive enquanto o servidor viver, e aí crescer
+# sem limite tem outro nome. Medido com aberturas variadas (o pior caso para a
+# diversidade de estados), o par `_memo`+`_cache_palpites` cresce ~12 MB a cada
+# 100 partidas — o que num dia de tráfego passa de gigabyte.
+#
+# Zerar por inteiro, e não despejar o mais antigo: manter idade por entrada
+# custaria mais que o cache economiza, e o que se perde é recalculável por
+# definição. 30.000 entradas são ~21 MB, e as poucas dezenas de estados quentes
+# de um dia (todo mundo joga a MESMA secreta) voltam ao cache na primeira
+# consulta depois da limpeza.
+TETO_MEMO = 30_000
 
 
 def _sem_docstring(arvore: ast.AST) -> ast.AST:
@@ -239,6 +265,15 @@ class MotorNivel3:
         enquanto o valor depende também das rodadas e da profundidade restantes.
         Sem este cache, o mesmo conjunto reaparecendo noutra rodada refaz a
         varredura do léxico inteiro — que é 95% do custo da busca.
+
+        O `.copy()` da fatia não é zelo: `ordenar_por_entropia` devolve a ordem
+        das 6.046 (ou 8.629) sondas, e `[:k]` é uma VIEW que mantém esse array de
+        48 KB vivo enquanto estiver no cache. Guardar a view custava 48 KB por
+        entrada para armazenar dez inteiros — medido, 9.874 das 11.823 entradas
+        de uma bateria de 30 partidas retinham a base, 478 MB dos 504 MB que o
+        processo crescia. Com a cópia, a mesma bateria cresce 6 MB. Num motor de
+        `cache_resource`, que vive enquanto o servidor viver, a diferença é entre
+        um cache e um vazamento.
         """
         chave = (
             k.to_bytes(2, "little")
@@ -250,7 +285,7 @@ class MotorNivel3:
             return guardado
 
         entropias = self.motor.entropias(candidatas)
-        ordem = self.motor.ordenar_por_entropia(entropias, candidatas)[:k]
+        ordem = self.motor.ordenar_por_entropia(entropias, candidatas)[:k].copy()
         if mais_provavel:
             melhor = self.motor.melhor_candidata(candidatas)
             if melhor not in ordem:
@@ -467,6 +502,53 @@ class MotorNivel3:
             valor_esperado=valor,
         )
 
+    def escolher_com_teto(
+        self,
+        candidatas: np.ndarray,
+        tentativa: int = 1,
+        teto: int = TETO_INTERATIVO,
+        n_alternativas: int = 3,
+    ) -> Sugestao:
+        """`escolher`, mas com um limite de tempo de resposta em vez de nenhum.
+
+        Acima de `teto` candidatas a busca é abandonada e responde o nível 2. A
+        troca é assimétrica, e é por isso que ela vale a pena: o custo da busca
+        cresce com o tamanho do conjunto, e a vantagem dela ENCOLHE. Medido sobre
+        os 131 estados possíveis da rodada 2 (a abertura é fixa, então o espaço é
+        enumerável), com o E[tentativas] exato de cada jogada sob o prior:
+
+            teto   delegados   prob.   pior latência   perda em E[tentativas]
+            sem         0       0,0%       12,13 s            0
+            400         2      13,2%        5,33 s            0,0068
+            250         5      22,8%        3,43 s            0,0072
+            150         9      29,1%        2,36 s            0,0126
+             60        25      56,5%        0,46 s            0,1020
+
+        Ou seja: em 250 se abre mão de 0,007 tentativa — 1,3% da vantagem de 0,54
+        que o nível 3 tem sobre o nível 2 — para cortar o pior caso em 3,5x.
+
+        E o teto não é só sobre conforto. Sem ele, uma jogada que quase não separa
+        (uma palavra fora do léxico marcada toda preta, que a interface aceita)
+        deixa ~5.800 candidatas, e aí a raiz da busca é a mesma da abertura: mais
+        de dez minutos presos numa thread do servidor. Numa página aberta ao
+        público isso é um travamento a um clique de distância.
+
+        Não é o padrão de `escolher` de propósito. O nível 3 sem teto é o que o
+        benchmark mede e o que o README documenta; onde vale esperar (a CLI, uma
+        bateria), o método a chamar continua sendo `escolher`. O teto é a escolha
+        de quem tem alguém do outro lado esperando, e por isso a interface é que o
+        pede — não `termo/` que o impõe.
+
+        É também aqui que a memoização é aparada (`TETO_MEMO`), pelo mesmo
+        motivo: só o caminho interativo tem um motor que vive para sempre.
+        """
+        if len(self._memo) > TETO_MEMO:
+            self._memo.clear()
+            self._cache_palpites.clear()
+        if teto is not None and len(candidatas) > teto:
+            return self.motor.escolher(candidatas, tentativa, n_alternativas)
+        return self.escolher(candidatas, tentativa, n_alternativas)
+
     def escolher_com_cache(self, candidatas: np.ndarray, tentativa: int) -> Sugestao:
         """`escolher` memoizado pelo conjunto de candidatas — usado no benchmark.
 
@@ -508,9 +590,7 @@ class MotorNivel3:
 
     def _abertura_guardada(self) -> tuple[dict, dict | None]:
         """(cache inteiro, entrada desta configuração se ainda válida)."""
-        if not ARQ_ABERTURA.exists():
-            return {}, None
-        cache = json.loads(ARQ_ABERTURA.read_text(encoding="utf-8"))
+        cache = ler_cache_json(ARQ_ABERTURA)
         guardada = cache.get(self._chave_cache())
         if guardada and guardada.get("n") == len(self.lexico):
             return cache, guardada
@@ -559,10 +639,7 @@ class MotorNivel3:
                 "valor_esperado": sugestao.valor_esperado,
                 "alternativas": [list(alt) for alt in sugestao.alternativas],
             }
-            ARQ_ABERTURA.parent.mkdir(parents=True, exist_ok=True)
-            ARQ_ABERTURA.write_text(
-                json.dumps(cache, ensure_ascii=False, indent=2), encoding="utf-8"
-            )
+            gravar_cache_json(ARQ_ABERTURA, cache)
         return sugestao
 
     def abertura_padrao(self, n_alternativas: int = 5) -> Sugestao:

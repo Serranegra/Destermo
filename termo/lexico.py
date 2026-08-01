@@ -47,6 +47,10 @@ DIR_DADOS = RAIZ / "data"
 
 ARQ_LEXICO_FINAL = RAIZ / "termo_lexico_5letras.txt"
 ARQ_SONDAS_EXTRA = RAIZ / "termo_sondas_extra.txt"
+# O ICF das palavras do léxico, recortado da tabela completa e versionado junto
+# com ele — é o que permite o solver responder sem tocar na rede (ver `carregar_icf`).
+ARQ_ICF_LEXICO = RAIZ / "termo_icf_5letras.txt"
+
 URL_BASE = "https://raw.githubusercontent.com/fserb/pt-br/master/"
 FONTES = {
     "lexico.txt": "lexico",
@@ -111,6 +115,17 @@ def _tabela_icf(dir_dados: Path = DIR_DADOS) -> dict[str, float]:
 
 
 # ---------------------------------------------------------------- construção
+
+
+def _tabela_icf_lexico(caminho: Path = ARQ_ICF_LEXICO) -> dict[str, float]:
+    """Mesmo formato de `_tabela_icf`, sobre o recorte versionado."""
+    tabela: dict[str, float] = {}
+    with caminho.open(encoding="utf-8") as arquivo:
+        for linha in arquivo:
+            palavra, _, score = linha.strip().partition(",")
+            if palavra and palavra not in tabela:
+                tabela[palavra] = float(score)
+    return tabela
 
 
 def _cinco_caracteres(caminho: Path) -> set[str]:
@@ -232,6 +247,34 @@ def carregar_sondas_extra(caminho: Path = ARQ_SONDAS_EXTRA) -> list[str]:
 # ---------------------------------------------------------------- ICF / prior
 
 
+def construir_icf_lexico(
+    caminho: Path = ARQ_ICF_LEXICO, dir_dados: Path = DIR_DADOS
+) -> dict[str, float]:
+    """Recorta da tabela ICF completa só as palavras do léxico final.
+
+    A tabela da fonte tem 419.486 palavras e 9,3 MB; o léxico tem 6.046 e usa
+    0,1 MB delas. A diferença não é de espaço em disco — é de a versão recortada
+    caber no repositório, e com isso o solver deixar de precisar da rede para
+    responder qual é a primeira jogada (ver `carregar_icf`).
+    """
+    tabela = _tabela_icf(dir_dados)
+    exibicao = carregar_exibicao()
+    faltando = [p for p in exibicao if p not in tabela]
+    if faltando:
+        # Hoje não acontece (`test_motor` afirma que a lista de ausentes é vazia),
+        # e é essa afirmação que torna o recorte fiel. Se um dia deixar de valer,
+        # o recorte perderia o `max(tabela)+1` de quem ficou de fora e mudaria o
+        # prior em silêncio — que é exatamente o tipo de erro que a §0.3 descreve.
+        raise ValueError(
+            f"{len(faltando)} palavras do léxico não estão no ICF "
+            f"({faltando[:5]}); o recorte mudaria o prior — ver `carregar_icf`"
+        )
+    caminho.write_text(
+        "".join(f"{p},{tabela[p]!r}\n" for p in exibicao), encoding="utf-8"
+    )
+    return {p: tabela[p] for p in exibicao}
+
+
 def carregar_icf(
     exibicao: list[str], dir_dados: Path = DIR_DADOS
 ) -> tuple[np.ndarray, list[str]]:
@@ -239,7 +282,25 @@ def carregar_icf(
 
     ICF = Inverse Corpus Frequency: score BAIXO significa palavra COMUM.
     Palavras ausentes recebem o maior score observado + 1 (tratadas como raras).
+
+    O recorte versionado do léxico vem primeiro, e a tabela completa é o plano B.
+    O motivo é o boot: `_tabela_icf` baixa 9,3 MB do GitHub quando `data/icf.txt`
+    não existe, e `data/` não vai versionado — então uma instância nova do app
+    web não subia sem rede, e caía com o traceback de `urlopen` na cara de quem
+    abrisse a página. Com o recorte, o único caminho que ainda precisa da fonte é
+    RECONSTRUIR o léxico, que não é coisa que se faça atendendo um request.
+
+    O recorte só é usado quando cobre `exibicao` inteiro. Assim um léxico de
+    recorte (os testes montam vários) ou uma fonte trocada caem no caminho
+    completo sozinhos, em vez de silenciosamente pegarem o ICF de outra lista.
     """
+    if ARQ_ICF_LEXICO.exists():
+        recorte = _tabela_icf_lexico()
+        if all(palavra in recorte for palavra in exibicao):
+            return (
+                np.array([recorte[p] for p in exibicao], dtype=np.float64),
+                [],
+            )
     tabela = _tabela_icf(dir_dados)
     ausentes = [p for p in exibicao if p not in tabela]
     padrao = max(tabela.values()) + 1.0 if tabela else 1.0

@@ -20,7 +20,9 @@ módulo muda — `candidatas` continua sendo índice de coluna.
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass, field
+from pathlib import Path
 
 import numpy as np
 
@@ -61,6 +63,52 @@ N_MAX_TENTATIVAS = 6
 # mora em `abertura_padrao()`.
 ABERTURA_PADRAO = "tarso"
 MOTIVO_ABERTURA_PADRAO = "melhor abertura - robusto a palavras comuns e raras"
+
+
+# ------------------------------------------------- cache de abertura em disco
+#
+# Os dois níveis guardam a abertura num JSON de `data/`, e desde que o solver
+# ganhou uma página web esse arquivo deixou de ser tocado só por um script na
+# máquina de quem desenvolve: agora quem o lê e o escreve é uma thread de request,
+# e podem existir várias ao mesmo tempo. Isso muda o que "gravar" precisa
+# garantir. Duas coisas, e nenhuma delas é o desempenho:
+#
+#   ATOMICIDADE   `write_text` trunca o arquivo e só depois escreve. Uma sessão
+#                 lendo nesse intervalo pegava um JSON pela metade e morria com
+#                 JSONDecodeError — na cara de um usuário que não pediu nada
+#                 disso. Gravar num temporário e trocar por `os.replace` faz o
+#                 arquivo ir de um conteúdo válido direto para o outro.
+#   TOLERÂNCIA    um cache é uma otimização, e falhar em gravá-lo não pode
+#                 derrubar quem só queria uma palavra. Disco cheio, permissão
+#                 negada, sistema de arquivos só de leitura (o normal em várias
+#                 plataformas de deploy): tudo isso vira "desta vez recalcula".
+#
+# Duas gravações simultâneas ainda podem perder uma da outra — a leitura e a
+# escrita não são uma transação. Mas o que se perde é uma entrada de cache que
+# será recalculada, não a integridade do arquivo, e travar para proteger um cache
+# custaria mais do que o que ele economiza.
+
+
+def ler_cache_json(caminho: Path) -> dict:
+    """Cache de disco. Ausente ou ilegível é indistinguível de vazio — de propósito."""
+    try:
+        conteudo = json.loads(caminho.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return conteudo if isinstance(conteudo, dict) else {}
+
+
+def gravar_cache_json(caminho: Path, dados: dict) -> None:
+    """Grava atomicamente; desiste em silêncio se o disco não aceitar."""
+    temporario = caminho.with_name(f"{caminho.name}.{os.getpid()}.tmp")
+    try:
+        caminho.parent.mkdir(parents=True, exist_ok=True)
+        temporario.write_text(
+            json.dumps(dados, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+        os.replace(temporario, caminho)
+    except OSError:
+        temporario.unlink(missing_ok=True)
 
 
 def _alinhar(prior: np.ndarray, n: int) -> np.ndarray:
@@ -353,6 +401,24 @@ class Motor:
             alternativas,
         )
 
+    def escolher_com_teto(
+        self,
+        candidatas: np.ndarray,
+        tentativa: int = 1,
+        teto: int | None = None,
+        n_alternativas: int = 3,
+    ) -> Sugestao:
+        """Mesma assinatura do teto do nível 3, onde aqui ele não tem o que cortar.
+
+        A escolha do nível 2 é uma varredura da matriz: meio segundo no pior caso
+        possível, que é o léxico inteiro na primeira jogada. Não há busca a
+        abandonar, então o parâmetro é aceito e ignorado — de propósito. É o que
+        mantém a promessa de que os dois níveis expõem a MESMA interface, e é o
+        que deixa a interface web chamar o mesmo método nos dois sem perguntar
+        com qual dos motores está falando.
+        """
+        return self.escolher(candidatas, tentativa, n_alternativas)
+
     def escolher_com_cache(self, candidatas: np.ndarray, tentativa: int) -> Sugestao:
         """`escolher` memoizado pelo conjunto de candidatas — usado no benchmark.
 
@@ -386,8 +452,8 @@ class Motor:
         if self.n_sondas != len(self.lexico):
             chave += f";S={self.n_sondas}"
         cache: dict = {}
-        if usar_cache and ARQ_ABERTURA.exists():
-            cache = json.loads(ARQ_ABERTURA.read_text(encoding="utf-8"))
+        if usar_cache:
+            cache = ler_cache_json(ARQ_ABERTURA)
             guardada = cache.get(chave)
             if guardada and guardada.get("n") == len(self.lexico):
                 return Sugestao(
@@ -409,9 +475,7 @@ class Motor:
                 "entropia": sugestao.entropia,
                 "alternativas": [list(alt) for alt in sugestao.alternativas],
             }
-            ARQ_ABERTURA.parent.mkdir(parents=True, exist_ok=True)
-            ARQ_ABERTURA.write_text(json.dumps(cache, ensure_ascii=False, indent=2),
-                                    encoding="utf-8")
+            gravar_cache_json(ARQ_ABERTURA, cache)
         return sugestao
 
     def abertura_padrao(self, n_alternativas: int = 5) -> Sugestao:

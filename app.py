@@ -35,8 +35,9 @@ from termo.feedback import (
     padrao_para_codigo,
     padrao_possivel,
 )
-from termo.lexico import Lexico
-from termo.nivel3 import BEAM, PROFUNDIDADE, MotorNivel3
+from termo.lexico import T_PADRAO, Lexico
+from termo.matriz import carregar_matriz
+from termo.nivel3 import BEAM, PROFUNDIDADE, TETO_INTERATIVO, MotorNivel3
 
 RAIZ = Path(__file__).resolve().parent
 MARCA = RAIZ / "brand"
@@ -261,24 +262,37 @@ trocar o tipo de resolvedor e o tamanho do léxico.</p>
 # ------------------------------------------------------------------- motor
 
 
-# `max_entries` não é zelo: cada motor carrega uma matriz inteira na memória —
-# 36 MB no espaço padrão, 52 MB no ampliado — e a barra lateral oferece 20
-# combinações (2 níveis x 5 temperaturas x 2 espaços). Sem teto, arrastar o slider
-# de T de ponta a ponta deixa uma matriz de cada para trás: medido, o processo vai
-# de 157 MB a 282 MB em três cliques, e passa de 500 MB numa sessão de testes.
-# Dois cabem confortavelmente e cobrem o vaivém real (trocar de nível e voltar).
+# A parte cara é a MATRIZ, e ela não depende nem do T nem do nível: as linhas são
+# palavras e as colunas são palavras. Só o espaço a muda. Separar os dois caches é
+# o que permite ser generoso no de baixo — o de cima guarda no máximo os dois
+# espaços que existem (36 MB o padrão, 52 MB o ampliado), e é o único que custa.
 @st.cache_resource(show_spinner=False, max_entries=2)
+def obter_espaco(ampliado: bool) -> tuple[Lexico, np.ndarray]:
+    """Léxico e matriz de padrões — o que é caro e o que é comum a toda config."""
+    lexico = Lexico.carregar(T_PADRAO, ampliado)
+    return lexico, carregar_matriz(lexico.sondas, lexico.palavras)
+
+
+# Com a matriz vindo pronta de cima, montar um motor é recalcular o prior: um
+# softmax sobre 6.046 floats, microssegundos. Antes um motor custava a matriz
+# inteira, e por isso o teto aqui era 2 — o que fazia a barra lateral, com suas 20
+# combinações, despejar um motor a cada dois cliques. E despejar um motor do
+# nível 3 joga fora a memoização da busca junto, que é o que ele tem de caro.
+@st.cache_resource(show_spinner=False, max_entries=8)
 def obter_motor(
     temperatura: float, nivel: int, ampliado: bool, beam: int, profundidade: int
 ) -> Motor | MotorNivel3:
-    """Léxico + matriz + motor. Caro (segundos) e imutável — cache de recurso.
+    """Motor pronto para esta configuração.
 
     `cache_resource` e não `cache_data` porque o motor não deve ser serializado a
     cada uso: ele carrega a matriz de 6.046x8.629 e memoiza escolhas por dentro,
     e é justamente essa memoização que queremos preservar entre reruns.
     """
-    lexico = Lexico.carregar(temperatura, ampliado)
-    motor: Motor | MotorNivel3 = Motor(lexico)
+    base, matriz = obter_espaco(ampliado)
+    lexico = base if base.temperatura == temperatura else base.com_temperatura(
+        temperatura
+    )
+    motor: Motor | MotorNivel3 = Motor(lexico, matriz)
     if nivel == 3:
         motor = MotorNivel3(motor, beam, profundidade)
     return motor
@@ -290,15 +304,32 @@ def obter_motor(
 # nuvem faz), o motor velho continua produzindo instâncias da classe velha, e o
 # pickle recusa: "it's not the same object as termo.entropia.Sugestao". Como a
 # `Sugestao` é só de leitura na tela, não há o que isolar por cópia — guardar a
-# própria instância é correto e mais barato. `max_entries` porque agora a chave
-# inclui o histórico, e uma partida longa gera uma entrada por rodada.
-@st.cache_resource(show_spinner=False, max_entries=64)
+# própria instância é correto e mais barato.
+#
+# `max_entries` era 64, e 64 é pouco: com a abertura fixa, a RODADA 2 sozinha tem
+# 131 estados possíveis por configuração, e cada partida em andamento acrescenta
+# um por rodada. Abaixo do tamanho do conjunto quente, um LRU não é um cache — é
+# um recálculo com passo extra, e o que se recalcula aqui custa segundos. O que
+# ele guarda são `Sugestao`, que são algumas centenas de bytes: 1.024 delas não
+# chegam a um megabyte, e cobrem um dia inteiro de tráfego sobre a mesma secreta
+# (que é o que o Termo é — todo mundo joga a mesma palavra, então os históricos
+# de sessões diferentes convergem e o cache é compartilhado de fato).
+@st.cache_resource(show_spinner=False, max_entries=1024)
 def sugerir(chave: tuple, historico: tuple[tuple[str, str], ...]) -> Sugestao:
     """Jogada sugerida para este histórico. Cacheada pelo par (config, histórico).
 
     O nível 3 gasta décimos de segundo por jogada, e o Streamlit reexecuta o
     script a cada tecla no campo de texto — sem este cache a busca rodaria de novo
     a cada letra digitada.
+
+    `escolher_com_teto` e não `escolher` porque aqui há alguém esperando. Sem o
+    teto, a busca do nível 3 responde em décimos de segundo no caso comum e em
+    MINUTOS quando a rodada anterior separou pouco — e o pior caso está a um
+    clique: uma palavra fora do léxico marcada toda preta deixa ~5.800 candidatas,
+    que é o mesmo tamanho da raiz da abertura. O teto troca 0,007 tentativa por um
+    limite superior de resposta; a medição está em `escolher_com_teto`. Os dois
+    níveis expõem o método, então esta camada continua sem saber com qual está
+    falando.
     """
     motor = obter_motor(*chave)
     if not historico:
@@ -306,14 +337,33 @@ def sugerir(chave: tuple, historico: tuple[tuple[str, str], ...]) -> Sugestao:
         # (ver `ABERTURA_PADRAO`). As duas telas do projeto não podem discordar da
         # primeira jogada, e ela não muda quando se mexe na barra lateral.
         return motor.abertura_padrao()
-    candidatas, _ = reconstruir(motor, historico)
-    return motor.escolher(candidatas, len(historico) + 1)
+    candidatas, _ = reconstruir(chave, historico)
+    return motor.escolher_com_teto(
+        candidatas, len(historico) + 1, teto=TETO_INTERATIVO
+    )
 
 
+# O docstring do módulo diz que refiltrar a cada rerun custa microssegundos, e
+# isso vale enquanto as tentativas estiverem no léxico: aí cada rodada é uma linha
+# da matriz. Fora dele não há linha, e `Motor.filtrar` cai no caminho lento — 6.046
+# chamadas de `calcular_codigo` em Python puro, por rodada. Medido, uma partida com
+# seis tentativas de fora custa 292 ms POR RERUN, e um rerun é cada clique numa
+# casa. O Termo aceita palavras que não temos e a interface deixa jogá-las, então
+# isso não é entrada malformada: é um usuário fazendo o que a tela permite.
+#
+# O cache é sobre (config, histórico), a mesma chave de `sugerir` — e pela mesma
+# razão de lá, `cache_resource` e não `cache_data`. Quem chama trata o resultado
+# como só de leitura; `filtrar` e `argsort` devolvem arrays novos, ninguém escreve
+# no que veio daqui.
+# A chave é a CONFIG, não o motor: um `Motor` não é hasheável para o Streamlit, e
+# passá-lo com `_` na frente (a saída que ele oferece) o tiraria da chave — duas
+# configurações diferentes passariam a compartilhar a mesma entrada de cache.
+@st.cache_resource(show_spinner=False, max_entries=1024)
 def reconstruir(
-    motor: Motor | MotorNivel3, historico: tuple[tuple[str, str], ...]
+    chave: tuple, historico: tuple[tuple[str, str], ...]
 ) -> tuple[np.ndarray, list[int]]:
     """Candidatas restantes e quantas sobraram após cada rodada."""
+    motor = obter_motor(*chave)
     candidatas = motor.todas_candidatas()
     trilha: list[int] = []
     for tentativa, padrao in historico:
@@ -518,7 +568,7 @@ acabou = venceu or len(historico) >= N_MAX_TENTATIVAS
 # agora é a do nível 2 (uma varredura de entropia, ~1 s), qualquer T responde na
 # hora, e a busca só entra da segunda jogada em diante, onde custa décimos.
 
-candidatas, trilha = reconstruir(motor, historico)
+candidatas, trilha = reconstruir(chave, historico)
 
 if venceu:
     st.success(f"acertou **{rotular(motor, historico[-1][0])}** em "
