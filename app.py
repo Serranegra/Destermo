@@ -284,7 +284,15 @@ def obter_motor(
     return motor
 
 
-@st.cache_data(show_spinner=False)
+# `cache_resource` e não `cache_data`: o `cache_data` guarda o valor por pickle, e
+# a `Sugestao` que sai daqui vem de um motor guardado em `cache_resource`, que
+# sobrevive aos reruns. Quando o Streamlit recarrega os módulos locais (o que a
+# nuvem faz), o motor velho continua produzindo instâncias da classe velha, e o
+# pickle recusa: "it's not the same object as termo.entropia.Sugestao". Como a
+# `Sugestao` é só de leitura na tela, não há o que isolar por cópia — guardar a
+# própria instância é correto e mais barato. `max_entries` porque agora a chave
+# inclui o histórico, e uma partida longa gera uma entrada por rodada.
+@st.cache_resource(show_spinner=False, max_entries=64)
 def sugerir(chave: tuple, historico: tuple[tuple[str, str], ...]) -> Sugestao:
     """Jogada sugerida para este histórico. Cacheada pelo par (config, histórico).
 
