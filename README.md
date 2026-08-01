@@ -289,7 +289,7 @@ python solver.py --t inf
 ```
 
 Para deixar o solver sondar com palavras que o Termo aceita mas nunca sorteia
-(conjugações verbais: 8.628 palavras jogáveis contra as mesmas 6.046 respostas
+(conjugações verbais: 8.629 palavras jogáveis contra as mesmas 6.046 respostas
 possíveis):
 
 ```bash
@@ -333,6 +333,10 @@ python benchmark.py --serao
 ```
 
 ```bash
+python benchmark.py --areio
+```
+
+```bash
 python benchmark.py --catalogo
 ```
 
@@ -364,7 +368,7 @@ solver numa página não exigiu mexer em nada lá dentro.
 |---|---|
 | `termo/feedback.py` | Normalização de acentos, regra das duas passadas, codificação base-3, detector de padrão impossível |
 | `termo/lexico.py` | Download, filtro de 5 caracteres, agrupamento por forma normalizada, dedupe por ICF, prior |
-| `termo/matriz.py` | Matriz 6.046 × 6.046 de padrões pré-computados (numpy vetorizado); 8.628 × 6.046 com `--ampliado` |
+| `termo/matriz.py` | Matriz 6.046 × 6.046 de padrões pré-computados (numpy vetorizado); 8.629 × 6.046 com `--ampliado` |
 | `termo/entropia.py` | Cálculo de entropia, regra de endgame, cache da abertura (nível 2) |
 | `termo/nivel3.py` | Busca na árvore de decisão pelo menor nº esperado de tentativas (nível 3) |
 | `termo/robustez.py` | Número efetivo de palavras (M = 2^H) e minimax de arrependimento sobre a distribuição desconhecida |
@@ -782,6 +786,87 @@ O resto da seção sai de `python benchmark.py --serao` seguido de
 `python analise.py`: o primeiro grava `resultados/serao.json`, o segundo tira
 dele os dois gráficos acima.
 
+### E o `areio` que todo mundo digita?
+
+`serão` é a abertura mais **recomendada**; `areio` é a mais **digitada**. São
+perguntas diferentes, e a segunda começa com um problema que a primeira não tem:
+`areio` não estava em lista nenhuma nossa. É conjugação de `areiar` — `arear` e
+`areia` estão no léxico, mas nenhuma forma verbal de nenhum dos dois sobreviveu
+ao arquivo `conjugações`. Sem estar no espaço de tentativa, a palavra não é
+mensurável nem jogável aqui, então ela entrou por curadoria explícita, em
+`SONDAS_MANUAIS` ([`termo/lexico.py`](termo/lexico.py)), que é hoje sua única
+entrada: **8.629 sondas** contra as mesmas 6.046 respostas.
+
+Isso também muda o método em relação ao `--serao`, e vale declarar: `areio` não
+pode ser a secreta e não tem ICF, então posição em frequência, mundo fechado e a
+fronteira H × ICF não se aplicam a ela. Os mundos aqui são todos **abertos** — o
+corte vale para o sorteio, o teclado continua inteiro. Fechar a lista em N
+apagaria `areio` do teclado, que é o oposto do que se quer medir.
+
+**No ranking de entropia** (as 8.629 sondas, léxico inteiro como lista de
+respostas):
+
+| T | melhor (H) | `areio` (H) | `serão` |
+|---|---|---|---|
+| ∞ | `cairo` (6,203) | **20º** (6,028) | 37º |
+| 5 | `tória` (6,236) | 64º (5,920) | 10º |
+| 2 | `tirão` (6,210) | 185º (5,759) | 8º |
+| **1** | `tarso` (5,975) | **344º** (5,477) | 14º |
+| 0,5 | `tarso` (4,980) | 390º (4,620) | 135º |
+
+O padrão é o **inverso** do de `serão`, e é o achado da seção. `serão` melhora
+quando a lista de respostas encolhe; `areio` melhora quando o prior **some**. As
+duas ficam boas em cantos opostos do mesmo espaço de premissas, e o canto de
+`areio` — prior uniforme sobre as 6.046, isto é, "o Termo sorteia `leruê` tanto
+quanto `porta`" — é o menos plausível dos dois.
+
+A grade (N, T) mostra isso de uma vez. Cada célula é a colocação de `areio`
+naquele mundo, e entre parênteses o que ela perde em bits para a melhor de lá:
+
+| N \ T | ∞ | 5 | 2 | 1 | 0,5 |
+|---|---|---|---|---|---|
+| 300 | 313º (-0,48) | 335º (-0,48) | 363º (-0,50) | 401º (-0,51) | 397º (-0,35) |
+| 1500 | 157º (-0,43) | 191º (-0,45) | 235º (-0,49) | 349º (-0,50) | 390º (-0,36) |
+| 3000 | 96º (-0,36) | 132º (-0,40) | 201º (-0,47) | 345º (-0,50) | 390º (-0,36) |
+| todas | **20º (-0,18)** | 64º (-0,32) | 185º (-0,45) | 344º (-0,50) | 390º (-0,36) |
+
+**`areio` não é a melhor abertura em canto nenhum da grade** — nem no do fórum
+(N=300, T→∞), onde `serão` é primeiro e ela é 313ª. O melhor que ela faz é 20º
+num único vértice.
+
+**E jogando**, média penalizada, mesma política pós-abertura nas seis:
+
+| abertura | N=300 | N=1500 | N=6046 | realista (1.500, T=1) | pior caso |
+|---|---|---|---|---|---|
+| `tarso` | 2,770 | **3,263** | **3,843** | **3,581** | **0,010** |
+| `tirão` | **2,760** | 3,278 | 3,858 | 3,637 | 0,015 |
+| `cairo` | 2,780 | 3,273 | 3,847 | 3,617 | 0,020 |
+| `teria` | 2,770 | 3,285 | 3,856 | 3,613 | 0,022 |
+| `serão` | 2,787 | 3,330 | 3,904 | 3,662 | 0,067 |
+| **`areio`** | 2,867 | 3,409 | 3,971 | 3,781 | **0,147** |
+
+A última coluna é o maior arrependimento nos **três primeiros** mundos — a
+referência de cada um é a melhor das seis ali, tirada do próprio conjunto, então
+quem lidera zera por construção (a mesma ressalva do `--serao`; para robustez de
+verdade, `python -m termo.robustez`).
+
+`areio` é **última nos quatro mundos**, e o pior caso dela é 15× o de `tarso` e
+2× o de `serão`. Na bateria realista custa **0,20 tentativa por partida**, e cinco
+das 1.500 partidas vão parar na sexta linha — com `tarso`, nenhuma passa da
+quinta. Ninguém perde jogo por abrir com ela; é uma abertura decente, não ótima.
+
+**De onde vem a popularidade, então.** Não da informação: quatro das cinco
+posições de `areio` vão para vogais, sobra uma para o R, e das consoantes que
+mais separam ela não toca em T nem em S — que é justamente o que `tarso` cobre.
+Vem da ergonomia: cinco letras distintas, as quatro vogais de uma vez, fácil de
+lembrar, de digitar e de ler o feedback. É uma troca análoga à da fronteira
+H × ICF da seção anterior, num eixo que o solver não mede: `serão` compra
+frequência com bits, `areio` compra **memorabilidade** com bits. Só que aqui o
+preço é maior — 0,20 tentativa contra os 0,08 de `serão`.
+
+Sai de `python benchmark.py --areio` (~2 min), que grava
+`resultados/areio.json`.
+
 ### Nível 1 → nível 2: a entropia compensa?
 
 Esta é a pergunta central da §5.1. Bateria realista: as 1.500 palavras de menor
@@ -846,22 +931,24 @@ nem tanto.**
 O Termo aceita como tentativa palavras que nunca sorteia como resposta: as
 conjugações verbais que a curadoria removeu. Nada obriga um palpite a poder ser
 a resposta: ele só precisa separar bem. Somando as formas de 5 letras do arquivo
-`conjugações` que ainda não estavam no léxico, o solver passa a ter **8.628
+`conjugações` que ainda não estavam no léxico, o solver passa a ter **8.629
 palavras jogáveis contra as mesmas 6.046 respostas possíveis** (`--ampliado`).
+Uma delas — `areio` — não vem do arquivo: é curadoria manual, pelo motivo que a
+[seção dela](#e-o-areio-que-todo-mundo-digita) explica.
 
 Sob o mesmo critério, mais opções não podem baixar a entropia máxima de jogada
 nenhuma. E não baixam: num varredura de 60 estados de meio de jogo, a melhor
 sonda é uma conjugação em 24 deles. Só que o ganho é de **0,034 bit em média**,
-e a abertura nem muda: `tarso` continua ótima entre as 8.628.
+e a abertura nem muda: `tarso` continua ótima entre as 8.629.
 
 Bits não são tentativas (§4.1), então o que decide é jogar:
 
 | Espaço de tentativa | Bateria | Média | Penalizada | Derrotas | ms/jogo |
 |---|---|---|---|---|---|
 | 6.046 | realista (1.500) | 3,5807 | 3,5807 | 0 | 3,33 |
-| 8.628 | realista (1.500) | 3,5807 | 3,5807 | 0 | 5,13 |
+| 8.629 | realista (1.500) | 3,5807 | 3,5807 | 0 | 5,13 |
 | 6.046 | completo (6.046) | 3,9464 | 3,9570 | 21 | 0,96 |
-| 8.628 | completo (6.046) | 3,9400 | 3,9486 | 17 | 1,23 |
+| 8.629 | completo (6.046) | 3,9400 | 3,9486 | 17 | 1,23 |
 
 Na bateria realista a diferença é **exatamente zero**, não "dentro do ruído":
 zero, nas duas casas que o benchmark reporta. A distribuição chega a se mexer (6
@@ -882,7 +969,7 @@ A resposta é não, e é pior que empate:
 | Espaço de tentativa | Média | Penalizada | s/jogo |
 |---|---|---|---|
 | 6.046 | 2,853 | 2,853 | 0,30 |
-| 8.628 | 2,863 | 2,863 | 2,41 |
+| 8.629 | 2,863 | 2,863 | 2,41 |
 
 **Ampliar piora o nível 3 em 0,010 tentativa e custa 8× a CPU** (300 partidas,
 beam=10, profundidade=1). O motivo não é estatístico, é estrutural: o beam é um

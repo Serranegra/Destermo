@@ -4,7 +4,7 @@ M[i][j] = feedback(sonda_i como tentativa, candidata_j como secreta), codificado
 em base 3 (0..242) e guardado em uint8.
 
     6.046 x 6.046 = ~37M células = ~37 MB em disco   espaço padrão
-    8.628 x 6.046 = ~52M células = ~52 MB em disco   espaço ampliado (§2.5)
+    8.629 x 6.046 = ~52M células = ~52 MB em disco   espaço ampliado (§2.5)
 
 As linhas são o espaço de TENTATIVA e as colunas o de RESPOSTA. No modo padrão os
 dois coincidem e a matriz é quadrada; com as conjugações ela fica mais alta que

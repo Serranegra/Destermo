@@ -17,7 +17,7 @@ import pytest
 
 from termo.entropia import Motor
 from termo.feedback import calcular_codigo, calcular_feedback, normalizar
-from termo.lexico import Lexico
+from termo.lexico import SONDAS_MANUAIS, Lexico
 from termo.matriz import construir_matriz
 
 # Formas verbais que o teste `test_conjugacoes_foram_excluidas` garante estarem
@@ -64,6 +64,22 @@ def test_conjugacoes_entram_como_sonda_e_nao_como_resposta(lexico):
     for conjugada in CONJUGADAS:
         assert conjugada not in lexico.indice, conjugada
         indice = lexico.indice_de(conjugada)
+        assert indice >= len(lexico)
+        assert not lexico.e_candidata(indice)
+
+
+def test_sondas_manuais_sao_jogaveis_e_nunca_resposta(lexico):
+    """As de `SONDAS_MANUAIS` entram pelo mesmo caminho das conjugações.
+
+    O que as distingue é a origem (curadoria, não arquivo-fonte), e é justamente
+    por isso que precisam de teste: um `construir_sondas` que as perdesse não
+    quebraria nada — só apagaria `areio` do teclado sem ninguém notar.
+    """
+    assert SONDAS_MANUAIS, "a lista existe para ser usada; vazia, sobra o comentário"
+    for palavra in SONDAS_MANUAIS:
+        chave = normalizar(palavra)
+        assert chave not in lexico.indice, palavra
+        indice = lexico.indice_de(palavra)
         assert indice >= len(lexico)
         assert not lexico.e_candidata(indice)
 

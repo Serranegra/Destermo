@@ -274,7 +274,7 @@ def obter_motor(
     """Léxico + matriz + motor. Caro (segundos) e imutável — cache de recurso.
 
     `cache_resource` e não `cache_data` porque o motor não deve ser serializado a
-    cada uso: ele carrega a matriz de 6.046x8.628 e memoiza escolhas por dentro,
+    cada uso: ele carrega a matriz de 6.046x8.629 e memoiza escolhas por dentro,
     e é justamente essa memoização que queremos preservar entre reruns.
     """
     lexico = Lexico.carregar(temperatura, ampliado)
@@ -482,7 +482,7 @@ with st.sidebar:
     temperatura = math.inf if bruto == "inf" else float(bruto)
     ampliado = st.toggle(
         "Espaço ampliado",
-        help="Deixa sondar com conjugações: 8.628 palavras jogáveis, mas as 6.046 "
+        help="Deixa sondar com conjugações: 8.629 palavras jogáveis, mas as 6.046 "
         "de sempre como resposta possível.",
     )
     st.divider()

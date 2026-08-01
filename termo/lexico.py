@@ -13,7 +13,8 @@ como tentativa, e uma tentativa não precisa poder ser a resposta para ser útil
 só precisa separar bem. Daí a distinção de dois espaços (§2.5):
 
   candidatas  6.046  o que pode ser a secreta; é sobre elas que se filtra
-  sondas      8.628  o que se pode digitar; as 6.046 mais 2.582 conjugações
+  sondas      8.629  o que se pode digitar; as 6.046 mais 2.582 conjugações e
+                     mais as de `SONDAS_MANUAIS` (hoje só `areio`)
 
 As sondas são um SUPERCONJUNTO com as candidatas no prefixo, na mesma ordem, de
 modo que todo índice de candidata continua valendo no espaço ampliado. Sem
@@ -46,7 +47,6 @@ DIR_DADOS = RAIZ / "data"
 
 ARQ_LEXICO_FINAL = RAIZ / "termo_lexico_5letras.txt"
 ARQ_SONDAS_EXTRA = RAIZ / "termo_sondas_extra.txt"
-
 URL_BASE = "https://raw.githubusercontent.com/fserb/pt-br/master/"
 FONTES = {
     "lexico.txt": "lexico",
@@ -55,6 +55,17 @@ FONTES = {
 # Baixado sob demanda, só por quem pede o espaço ampliado: são 2,2 MB que não
 # servem para nada no modo padrão.
 FONTES_SONDAS = {"conjugacoes.txt": "conjugações"}
+
+# Sondas que o term.ooo aceita e as nossas fontes não têm. O critério para entrar
+# aqui é estreito: a palavra tem de ser digitável no jogo real E ter uso medido
+# entre quem joga — não basta ser uma forma válida do português. Cada entrada vem
+# com a justificativa, porque a lista é curadoria manual e sem isso apodrece.
+#
+#   areio  1ª pessoa de `areiar`. `arear` e `areia` estão no léxico, mas nenhuma
+#          conjugação de nenhum dos dois sobreviveu à fonte. É a abertura mais
+#          digitada do Termo, e sem ela aqui não dava para medi-la
+#          (`benchmark.py --areio`).
+SONDAS_MANUAIS = ("areio",)
 
 TAMANHO = 5
 # a-z mais o bloco latin-1 acentuado, excluindo o '÷' (U+00F7) que cai no meio da faixa.
@@ -171,8 +182,9 @@ def carregar_exibicao(caminho: Path = ARQ_LEXICO_FINAL) -> list[str]:
 def construir_sondas(dir_dados: Path = DIR_DADOS, salvar: bool = True) -> list[str]:
     """Palavras de 5 letras que servem de sonda mas nunca de resposta (§2.5).
 
-    Mesma fonte e mesmos filtros do léxico, aplicados ao arquivo `conjugações`.
-    Duas diferenças de propósito em relação a `construir_lexico`:
+    Mesma fonte e mesmos filtros do léxico, aplicados ao arquivo `conjugações`,
+    mais as de `SONDAS_MANUAIS`. Duas diferenças de propósito em relação a
+    `construir_lexico`:
 
       - o que já existe no léxico é descartado; o resultado é só o ACRÉSCIMO
       - a dedupe por forma normalizada continua (duas variantes acentuadas são a
@@ -183,7 +195,8 @@ def construir_sondas(dir_dados: Path = DIR_DADOS, salvar: bool = True) -> list[s
     conhecidas = {normalizar(palavra) for palavra in carregar_exibicao()}
 
     grupos: dict[str, list[str]] = defaultdict(list)
-    for palavra in _cinco_caracteres(dir_dados / "conjugacoes.txt"):
+    fonte = _cinco_caracteres(dir_dados / "conjugacoes.txt") | set(SONDAS_MANUAIS)
+    for palavra in fonte:
         chave = normalizar(palavra)
         if chave not in conhecidas:
             grupos[chave].append(palavra)
@@ -197,8 +210,8 @@ def construir_sondas(dir_dados: Path = DIR_DADOS, salvar: bool = True) -> list[s
 
     print(
         f"conjugações: {len(conhecidas)} já no léxico  "
-        f"+{len(extras)} sondas novas  -> espaço de tentativa "
-        f"{len(conhecidas) + len(extras)}"
+        f"+{len(extras)} sondas novas ({len(SONDAS_MANUAIS)} manuais)  "
+        f"-> espaço de tentativa {len(conhecidas) + len(extras)}"
     )
     if salvar:
         ARQ_SONDAS_EXTRA.write_text("\n".join(extras) + "\n", encoding="utf-8")

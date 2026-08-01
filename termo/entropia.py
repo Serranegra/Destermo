@@ -10,7 +10,7 @@ Escolhe-se o `g` de maior H. O espaço de tentativas é o léxico completo — n
 as candidatas restantes —, o que permite "queimar" uma jogada numa palavra
 improvável mas muito informativa. O prior entra apenas no peso das candidatas.
 
-Com `Lexico.carregar(ampliado=True)` esse espaço cresce para as 8.628 sondas
+Com `Lexico.carregar(ampliado=True)` esse espaço cresce para as 8.629 sondas
 (§2.5): as conjugações não podem ser a resposta, mas podem ser digitadas, e como
 o prior delas é 0 elas nunca competem com uma candidata em caso de empate. As
 linhas da matriz são o espaço de sonda; as colunas, o de candidata. Nada mais no
@@ -378,7 +378,7 @@ class Motor:
         uso diário (a matriz inteira particionada contra as 6.046 candidatas).
 
         O espaço de tentativa entra na chave do cache porque é exatamente o que a
-        conta varre: a abertura das 6.046 e a das 8.628 são respostas a perguntas
+        conta varre: a abertura das 6.046 e a das 8.629 são respostas a perguntas
         diferentes e não podem se sobrescrever no arquivo. O sufixo só aparece no
         modo ampliado — assim as entradas já versionadas continuam valendo.
         """

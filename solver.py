@@ -267,7 +267,7 @@ def main() -> None:
     )
     analisador.add_argument(
         "--ampliado", action="store_true",
-        help="permite sondar com conjugações (8.628 palavras jogáveis, 6.046 "
+        help="permite sondar com conjugações (8.629 palavras jogáveis, 6.046 "
              "respostas possíveis); baixa e processa a fonte na primeira vez",
     )
     argumentos = analisador.parse_args()

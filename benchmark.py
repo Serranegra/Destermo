@@ -10,6 +10,7 @@ uma heurística simples chega perto?
     python benchmark.py --n 300               # amostra menor, para iterar rápido
     python benchmark.py --nivel3              # head-to-head nível 2 vs nível 3
     python benchmark.py --serao               # por que os fóruns apontam `serão`
+    python benchmark.py --areio               # a abertura mais digitada do Termo
     python benchmark.py --catalogo            # melhor abertura de cada cenário (lento)
 
 Resultados vão para `resultados/*.json`; os gráficos saem de `analise.py`.
@@ -66,6 +67,18 @@ MUNDO_SERAO = 300
 N_TOPO_SERAO = 12          # fundo do ranking mostrado: o suficiente para incluir `serão`
 N_ABERTURAS_SERAO = 3      # quantas rivais jogam contra ele no mundo restrito
 TEMPERATURAS_SERAO = [math.inf, 2.0, 1.0, 0.5, 0.3, 0.1]
+
+# Experimento do `areio`: a abertura que mais se DIGITA no Termo, ao contrário de
+# `serão`, que é a mais recomendada. As duas perguntas são diferentes e a segunda
+# nem cabe no molde da primeira — `areio` é conjugação, não pode ser a secreta e
+# não tem ICF, então mundo fechado, ranking de frequência e fronteira H × ICF
+# simplesmente não se aplicam a ela. O que sobra são mundos ABERTOS: o corte vale
+# para o sorteio, o teclado continua inteiro.
+PALAVRA_DIGITADA = "areio"
+MUNDOS_AREIO = [300, 1500, None]           # None = léxico inteiro
+CORTES_AREIO = [300, 1500, 3000, None]
+TEMPERATURAS_AREIO = [math.inf, 5.0, 2.0, 1.0, 0.5]
+N_TOPO_AREIO = 5
 
 # Matriz de arrependimento: quanto cada abertura perde para a melhor DAQUELE mundo.
 # Ninguém sabe em qual dos três está jogando, então a coluna que importa é o pior
@@ -254,7 +267,9 @@ def mundo_restrito(
     return restrito, matriz[np.ix_(indices, indices)].copy()
 
 
-def mundo_aberto(lexico: Lexico, n: int) -> tuple[Lexico, np.ndarray]:
+def mundo_aberto(
+    lexico: Lexico, n: int, temperatura: float = math.inf
+) -> tuple[Lexico, np.ndarray]:
     """Só as `n` mais comuns podem ser a RESPOSTA; o léxico inteiro continua digitável.
 
     É a diferença que a matriz de arrependimento exige. `tarso` não está entre as
@@ -263,13 +278,24 @@ def mundo_aberto(lexico: Lexico, n: int) -> tuple[Lexico, np.ndarray]:
     de mundos diferentes não teriam como se enfrentar.
 
     O que muda de mundo para mundo é a crença sobre o sorteio, não o teclado:
-    o corte entra no prior (uniforme sobre as `n`, zero no resto) e no conjunto
-    inicial de candidatas, nunca no espaço de palpites.
+    o corte entra no prior (`temperatura` sobre as `n`, zero no resto) e no
+    conjunto inicial de candidatas, nunca no espaço de palpites.
+
+    `temperatura` é o segundo botão de `mundo_restrito`, aqui também: o padrão
+    (uniforme) é a hipótese do fórum, e um T finito pesa o que sobrou dentro do
+    corte. Renormalizado dentro dele, como lá.
     """
     candidatas = np.sort(lexico.mais_comuns(n)).astype(np.int32)
     prior = np.zeros(len(lexico), dtype=np.float64)
-    prior[candidatas] = 1.0 / n
-    return replace(lexico, temperatura=math.inf, prior=prior), candidatas
+    dentro = calcular_prior(lexico.icf, temperatura)[candidatas]
+    prior[candidatas] = dentro / dentro.sum()
+    # `prior_sondas=None` força o recálculo: sem isso o `replace` carregaria o do
+    # léxico de origem, que é o prior ANTIGO espalhado — invisível no espaço não
+    # ampliado (onde ninguém o lê) e um desempate errado no ampliado.
+    return (
+        replace(lexico, temperatura=temperatura, prior=prior, prior_sondas=None),
+        candidatas,
+    )
 
 
 def _posicao(ordem: np.ndarray, indice: int) -> int:
@@ -348,7 +374,7 @@ def rodar_ampliado(
     beam: int = BEAM,
     profundidade: int = PROFUNDIDADE,
 ) -> list[Resultado]:
-    """Head-to-head do espaço de tentativa: 6.046 sondas contra 8.628 (§2.5).
+    """Head-to-head do espaço de tentativa: 6.046 sondas contra 8.629 (§2.5).
 
     Mesma política, mesmo prior, mesmas secretas — a única diferença é quantas
     palavras o solver tem permissão de digitar. Como a lista de respostas não
@@ -375,7 +401,7 @@ def rodar_ampliado(
         print(f"nível 3: beam={beam}, profundidade={profundidade}")
 
     resultados = []
-    for atual, rotulo in ((motor, "6.046"), (motor_ampliado, "8.628")):
+    for atual, rotulo in ((motor, "6.046"), (motor_ampliado, "8.629")):
         if nivel3:
             estrategia = construir_nivel3(atual, beam, profundidade)
         else:
@@ -588,7 +614,129 @@ def rodar_serao(n: int | None, temperatura: float, beam: int, profundidade: int
     }
 
 
+def rodar_areio(n: int | None, temperatura: float) -> tuple[list[Resultado], dict]:
+    """A abertura mais DIGITADA do Termo, medida onde ela existe.
+
+    `--serao` responde por que o consenso RECOMENDA uma palavra que o solver não
+    escolhe. Esta é a outra pergunta: por que tanta gente ABRE com `areio`, que
+    não é recomendação de ninguém. E a resposta tem de sair de outro lugar, porque
+    `areio` é conjugação — não pode ser a secreta, não tem ICF e até agora nem
+    estava no espaço de tentativa (é a única entrada de `SONDAS_MANUAIS`).
+
+    Isso muda o método em três pontos, e vale dizer quais para que a comparação
+    com `serão` seja lida com cuidado:
+
+      - o léxico é o AMPLIADO (§2.5); no de 6.046 a palavra não existe
+      - os mundos são ABERTOS: fechar a lista de respostas em N também apagaria
+        `areio` do teclado, que é o oposto do que se quer medir
+      - não há posição em frequência nem fronteira H × ICF — as duas pedem um ICF
+        que uma conjugação não tem
+
+    O que sobra é o suficiente: ranking de entropia, a grade (N, T) e as partidas.
+    """
+    lexico = Lexico.carregar(temperatura, ampliado=True)
+    motor = Motor(lexico)
+    matriz = motor.matriz
+    alvo = lexico.indice_de(PALAVRA_DIGITADA)
+    partidas: list[Resultado] = []
+
+    # ------------------------------------ 1. ranking no espaço de tentativa
+    print(f"\n[1/4] '{PALAVRA_DIGITADA}' no ranking de entropia das "
+          f"{lexico.n_sondas} sondas ...")
+    todas = motor.todas_candidatas()
+    # `serão` de referência: é a mesma pergunta feita a uma palavra que o
+    # experimento vizinho já mediu, no mesmo eixo e no mesmo mundo.
+    referencia = lexico.indice_de(PALAVRA_FORUNS)
+    varredura = []
+    for t in TEMPERATURAS_AREIO:
+        m = Motor(lexico.com_temperatura(t), matriz=matriz)
+        entropias = m.entropias(todas)
+        ordem = np.argsort(-entropias, kind="stable")
+        varredura.append({
+            "t": t,
+            "melhor": lexico.mostrar(int(ordem[0])),
+            "entropia_melhor": float(entropias[ordem[0]]),
+            "entropia": float(entropias[alvo]),
+            "distancia": float(entropias[ordem[0]] - entropias[alvo]),
+            "posicao": _posicao(ordem, alvo),
+            "topo": [lexico.mostrar(int(j)) for j in ordem[:N_TOPO_AREIO]],
+            "posicao_serao": _posicao(ordem, referencia),
+        })
+        v = varredura[-1]
+        print(f"  T={t:<5g} melhor={v['melhor']:8s} H={v['entropia_melhor']:.4f}   "
+              f"'{PALAVRA_DIGITADA}' {v['posicao']:>4}º H={v['entropia']:.4f} "
+              f"(-{v['distancia']:.4f})   ('{PALAVRA_FORUNS}' "
+              f"{v['posicao_serao']}º)")
+
+    # --------------------------------------------- 2. a grade (N, T) aberta
+    print(f"\n[2/4] grade (N, T) em mundos abertos — o corte vale para o sorteio, "
+          "não para o teclado ...")
+    celulas = []
+    for corte in CORTES_AREIO:
+        tamanho = corte or len(lexico)
+        for t in TEMPERATURAS_AREIO:
+            mundo, candidatas = mundo_aberto(lexico, tamanho, t)
+            m = Motor(mundo, matriz=matriz)
+            entropias = m.entropias(candidatas)
+            ordem = np.argsort(-entropias, kind="stable")
+            celulas.append({
+                "n": tamanho,
+                "t": t,
+                "melhor": mundo.mostrar(int(ordem[0])),
+                "entropia_melhor": float(entropias[ordem[0]]),
+                "entropia_alvo": float(entropias[alvo]),
+                "distancia": float(entropias[ordem[0]] - entropias[alvo]),
+                "posicao": _posicao(ordem, alvo),
+            })
+        linha = [c for c in celulas if c["n"] == tamanho]
+        print(f"  N={tamanho:<5} " + "  ".join(
+            f"T={c['t']:g}:{c['posicao']}º(-{c['distancia']:.2f})" for c in linha
+        ))
+
+    # ------------------------------------------------------- 3. as partidas
+    print(f"\n[3/4] partidas em {len(MUNDOS_AREIO)} mundos abertos ...")
+    # As rivais: a melhor do léxico inteiro, a melhor de cada mundo, e `serão`,
+    # que é a recomendação contra a qual o hábito se compara.
+    rivais = [motor.abertura().palavra, PALAVRA_DIGITADA, PALAVRA_FORUNS]
+    for corte in MUNDOS_AREIO:
+        mundo, candidatas = mundo_aberto(lexico, corte or len(lexico))
+        m = Motor(mundo, matriz=matriz)
+        rivais.append(mundo.mostrar(int(np.argmax(m.entropias(candidatas)))))
+    aberturas = list(dict.fromkeys(rivais))
+    print(f"  aberturas em disputa: {', '.join(aberturas)}")
+    jogos, arrependimento = _arrependimento(lexico, matriz, aberturas, MUNDOS_AREIO)
+    partidas += jogos
+
+    # ------------------------------------------- 4. e no mundo de verdade
+    secretas = conjunto_secretas(lexico, "realista", n)
+    print(f"\n[4/4] mundo padrão do projeto (T={temperatura:g}, "
+          f"{len(secretas)} secretas realistas) ...")
+    for palavra in aberturas:
+        m = Motor(lexico, matriz=matriz)
+        resultado = avaliar(m, AberturaFixa(m, palavra), secretas, "realista",
+                            verboso=False)
+        partidas.append(resultado)
+        print(f"  {palavra:8s} média={resultado.media_tentativas:.4f}  "
+              f"penalizada={resultado.media_penalizada:.4f}  "
+              f"vitórias={resultado.taxa_vitoria:.2%}")
+
+    return partidas, {
+        "palavra": PALAVRA_DIGITADA,
+        "temperatura": temperatura,
+        "n_sondas": lexico.n_sondas,
+        "e_candidata": lexico.e_candidata(alvo),
+        "varredura_t": varredura,
+        "grade": {
+            "cortes": [c or len(lexico) for c in CORTES_AREIO],
+            "temperaturas": TEMPERATURAS_AREIO,
+            "celulas": celulas,
+        },
+        "arrependimento": arrependimento,
+    }
+
+
 def _arrependimento(lexico: Lexico, matriz: np.ndarray, aberturas: list[str],
+                    mundos: list[int | None] | None = None,
                     ) -> tuple[list[Resultado], dict]:
     """Cada abertura em cada mundo, e o que ela perde para a melhor dali.
 
@@ -598,19 +746,21 @@ def _arrependimento(lexico: Lexico, matriz: np.ndarray, aberturas: list[str],
     depende da premissa.
 
     NÃO é um minimax de arrependimento, embora pareça: a referência de cada mundo
-    é a melhor DAS SEIS candidatas, tirada do próprio conjunto comparado, e com
-    isso quem estiver no topo dele zera por construção. Serve para comparar as
-    seis entre si, não para eleger uma robusta — para isso é `termo/robustez.py`,
-    que usa uma referência independente (o beam de entropia do mundo) e uma
-    família contínua de distribuições em vez de três pontos escolhidos a dedo.
+    é a melhor DAS DISPUTANTES, tirada do próprio conjunto comparado, e com isso
+    quem estiver no topo dele zera por construção. Serve para comparar as
+    disputantes entre si, não para eleger uma robusta — para isso é
+    `termo/robustez.py`, que usa uma referência independente (o beam de entropia
+    do mundo) e uma família contínua de distribuições em vez de três pontos
+    escolhidos a dedo.
 
-    Mundos ABERTOS (`mundo_aberto`): o corte é sobre as respostas, e as seis
-    aberturas continuam digitáveis nos três. Um mundo fechado não serviria aqui —
-    `tarso` nem existiria no de 300.
+    Mundos ABERTOS (`mundo_aberto`): o corte é sobre as respostas, e as aberturas
+    continuam digitáveis em todos eles. Um mundo fechado não serviria aqui —
+    `tarso` nem existiria no de 300, e `areio` em nenhum.
     """
+    mundos = MUNDOS_ARREPENDIMENTO if mundos is None else mundos
     medias: dict[str, dict[str, float]] = {}
     partidas: list[Resultado] = []
-    for n in MUNDOS_ARREPENDIMENTO:
+    for n in mundos:
         mundo, candidatas = mundo_aberto(lexico, n or len(lexico))
         rotulo = f"N={len(candidatas)}"
         print(f"  mundo {rotulo} ({len(candidatas)} respostas possíveis, "
@@ -623,19 +773,20 @@ def _arrependimento(lexico: Lexico, matriz: np.ndarray, aberturas: list[str],
             medias.setdefault(palavra, {})[rotulo] = resultado.media_penalizada
             print(f"    {palavra:8s} {resultado.media_penalizada:.4f}")
 
-    rotulos = [f"N={n or len(lexico)}" for n in MUNDOS_ARREPENDIMENTO]
+    rotulos = [f"N={n or len(lexico)}" for n in mundos]
     melhor_do_mundo = {r: min(medias[p][r] for p in aberturas) for r in rotulos}
     arrependimento = {
         p: {r: medias[p][r] - melhor_do_mundo[r] for r in rotulos} for p in aberturas
     }
     pior_caso = {p: max(arrependimento[p].values()) for p in aberturas}
-    print(f"\n  maior distância à melhor das seis, por abertura: "
+    print(f"\n  maior distância à melhor das {len(aberturas)}, por abertura: "
           + ", ".join(f"{p} {v:.4f}" for p, v in sorted(pior_caso.items(),
                                                         key=lambda x: x[1])))
     print("  (referência tirada do próprio conjunto — para robustez, "
           "`python -m termo.robustez`)")
     return partidas, {
         "mundos": rotulos,
+        "n": [n or len(lexico) for n in mundos],
         "aberturas": aberturas,
         "medias": medias,
         "melhor_do_mundo": melhor_do_mundo,
@@ -884,10 +1035,12 @@ def main() -> None:
                             help="head-to-head nível 2 vs nível 3 (lento)")
     analisador.add_argument("--serao", action="store_true",
                             help="por que os fóruns apontam `serão` e o solver não")
+    analisador.add_argument("--areio", action="store_true",
+                            help="a abertura mais digitada do Termo, `areio`")
     analisador.add_argument("--catalogo", action="store_true",
                             help="a melhor abertura de cada cenário (lento: ~12 min)")
     analisador.add_argument("--ampliado", action="store_true",
-                            help="head-to-head 6.046 contra 8.628 sondas (§2.5); "
+                            help="head-to-head 6.046 contra 8.629 sondas (§2.5); "
                                  "com --nivel3, a mesma sob o objetivo real")
     analisador.add_argument("--beam", type=int, default=BEAM,
                             help=f"nível 3: palpites por nó (padrão {BEAM})")
@@ -907,6 +1060,9 @@ def main() -> None:
             argumentos.n, temperatura, argumentos.beam, argumentos.profundidade
         )
         nome = "serao.json"
+    elif argumentos.areio:
+        resultados, extras = rodar_areio(argumentos.n, temperatura)
+        nome = "areio.json"
     elif argumentos.catalogo:
         resultados, extras = rodar_catalogo(
             temperatura, argumentos.beam, argumentos.profundidade
@@ -943,7 +1099,8 @@ def main() -> None:
     print(f"\nresultados em {caminho}")
     print(f"tempo total: {time.perf_counter() - inicio:.0f}s")
 
-    if not (argumentos.varredura_t or argumentos.serao or argumentos.catalogo):
+    if not (argumentos.varredura_t or argumentos.serao or argumentos.catalogo
+            or argumentos.areio):
         pior = max(resultados, key=lambda r: r.media_tentativas)
         melhor = min(resultados, key=lambda r: r.media_penalizada)
         print(f"\nmelhor (média penalizada): {melhor.estrategia} "
