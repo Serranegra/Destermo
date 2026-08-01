@@ -236,8 +236,36 @@ class Motor:
     # --------------------------------------------------------------- escolha
 
     def melhor_candidata(self, candidatas: np.ndarray) -> int:
-        """Candidata de maior prior (menor ICF)."""
+        """Candidata que carrega mais massa de probabilidade sob o prior atual.
+
+        É o que a busca do nível 3 quer quando põe "a mais provável" no beam: lá o
+        que importa é a massa, medida pelo mesmo prior que define o objetivo.
+
+        Para o CHUTE do endgame quem manda é `mais_comum` — ver o porquê lá.
+        """
         return int(candidatas[np.argmax(self.lexico.prior[candidatas])])
+
+    def ordem_por_frequencia(self, candidatas: np.ndarray) -> np.ndarray:
+        """`candidatas` da mais comum do português para a mais rara (ICF crescente)."""
+        return candidatas[np.argsort(self.lexico.icf[candidatas], kind="stable")]
+
+    def mais_comum(self, candidatas: np.ndarray) -> int:
+        """Candidata mais comum do português (menor ICF) — o chute do endgame.
+
+        Quando não há mais o que separar e só resta apostar numa candidata, a
+        aposta certa é a palavra mais comum: a secreta do Termo é uma palavra que
+        alguém escolheu para o jogo, e isso não muda com a configuração do solver.
+
+        Por que não `melhor_candidata`: para todo T finito as duas coincidem — o
+        prior é softmax(-ICF/T), estritamente decrescente no ICF. Elas divergem
+        justamente onde o prior para de informar: com `--t inf` ele é uniforme e
+        `argmax` devolveria a primeira do índice (ordem alfabética), e com T
+        minúsculo o softmax satura e zera conjuntos inteiros, com o mesmo efeito.
+        Nesses dois regimes o T diz "não confio na frequência para PESAR a
+        entropia" — não diz que a palavra do dia virou equiprovável. O ICF ainda
+        sabe qual é a mais comum, e é de graça usá-lo no desempate.
+        """
+        return int(candidatas[np.argmin(self.lexico.icf[candidatas])])
 
     def ordenar_por_entropia(
         self, entropias: np.ndarray, candidatas: np.ndarray
@@ -278,11 +306,11 @@ class Motor:
             return Sugestao(i, palavras[i], 0.0, "única candidata restante", True)
 
         if m == 2:
-            i = self.melhor_candidata(candidatas)
+            i = self.mais_comum(candidatas)
             outra = [palavras[j] for j in candidatas if j != i]
             return Sugestao(
                 i, palavras[i], 0.0,
-                f"restam 2 candidatas; chuta a mais provável (outra: {outra[0]})",
+                f"restam 2 candidatas; chuta a mais comum (outra: {outra[0]})",
                 True,
                 [(palavras[j], 0.0, True) for j in candidatas if j != i],
             )
@@ -292,17 +320,18 @@ class Motor:
             tentativa == self.n_max_tentativas - 1 and m <= self.limiar_endgame
         )
         if ultima or penultima_apertada:
-            i = self.melhor_candidata(candidatas)
+            # Sem jogada informativa pela frente, a única alavanca que sobra é a
+            # frequência: chuta-se a mais comum, em qualquer T (ver `mais_comum`).
+            ordem = self.ordem_por_frequencia(candidatas)
+            i = int(ordem[0])
             motivo = (
-                "última tentativa: só faz sentido chutar uma candidata"
+                "última tentativa: só faz sentido chutar uma candidata, "
+                "e a aposta é a mais comum"
                 if ultima
-                else f"penúltima tentativa com {m} candidatas: chuta a mais provável"
+                else f"penúltima tentativa com {m} candidatas: chuta a mais comum"
             )
             alternativas = [
-                (palavras[j], 0.0, True)
-                for j in candidatas[np.argsort(-self.lexico.prior[candidatas])][
-                    1 : n_alternativas + 1
-                ]
+                (palavras[j], 0.0, True) for j in ordem[1 : n_alternativas + 1]
             ]
             return Sugestao(i, palavras[i], 0.0, motivo, True, alternativas)
 

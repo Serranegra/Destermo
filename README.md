@@ -1129,6 +1129,25 @@ A regra foi implementada como especificado, mas o limiar é configurável
 <= 2` tem tratamento próprio. Fazer isso direito exige minimizar tentativas
 esperadas, que é exatamente o nível 3, hoje o padrão da CLI.
 
+### O chute do endgame é a palavra mais comum, não a de maior prior
+
+Quando não sobra jogada informativa — última tentativa, ou penúltima com `C`
+pequeno —, o solver aposta na candidata **mais comum do português** (menor ICF),
+em qualquer temperatura.
+
+Parece a mesma coisa que "maior prior", e para todo T finito é: o prior é
+softmax(-ICF/T), estritamente decrescente no ICF. As duas divergem justamente
+onde o prior para de informar. Com `--t inf` ele é uniforme e o `argmax` devolvia
+a primeira do índice — nas 40 candidatas de `tarso` + `BBBBB`, chutava `bebum` em
+vez de `civil`. Com T minúsculo o softmax satura e zera conjuntos inteiros, com o
+mesmo efeito.
+
+O T diz "não confio na frequência para *pesar* a entropia"; não diz que a palavra
+do dia virou equiprovável. A secreta do Termo é uma palavra que alguém escolheu
+para o jogo, e o ICF continua sabendo qual é a mais comum — usá-lo no desempate é
+de graça. `Motor.melhor_candidata` (massa de probabilidade) segue existindo para
+a busca do nível 3, que é onde a massa é de fato o que importa.
+
 ### Detector de feedback logicamente impossível
 
 A especificação (§7.3) pede detectar feedback impossível *antes* de zerar `C`, sem

@@ -237,6 +237,22 @@ def test_ultima_tentativa_nunca_queima_uma_nao_candidata(motor):
     assert sugestao.indice == max(candidatas, key=lambda i: motor.lexico.prior[i])
 
 
+@pytest.mark.parametrize("temperatura", [math.inf, 0.01, 1.0])
+def test_ultima_tentativa_chuta_a_mais_comum_em_qualquer_t(lexico, temperatura):
+    """A aposta cega é sempre a palavra mais comum — o T não muda isso.
+
+    Com T=inf o prior é uniforme e com T=0,01 ele satura em zero: nos dois o
+    `argmax(prior)` devolvia a primeira do índice, não a mais comum.
+    """
+    motor = Motor(lexico.com_temperatura(temperatura))
+    candidatas = motor.filtrar(motor.todas_candidatas(), "tarso", 0)[:40]
+    sugestao = motor.escolher(candidatas, tentativa=6)
+    assert sugestao.indice == min(candidatas, key=lambda i: lexico.icf[i])
+    # e as alternativas seguem na mesma moeda: da mais comum para a mais rara
+    icfs = [lexico.icf[lexico.indice_de(p)] for p, _, _ in sugestao.alternativas]
+    assert icfs == sorted(icfs) and lexico.icf[sugestao.indice] <= icfs[0]
+
+
 def test_penultima_tentativa_com_c_pequeno_chuta_candidata(motor):
     candidatas = motor.filtrar(motor.todas_candidatas(), "tarso", 0)[:3]
     assert motor.escolher(candidatas, tentativa=5).e_candidata
