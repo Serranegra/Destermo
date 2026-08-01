@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import html
 import math
+import threading
 import urllib.parse
 from pathlib import Path
 
@@ -298,6 +299,37 @@ def obter_motor(
     return motor
 
 
+# Quantas buscas do nível 3 podem estar EM VOO ao mesmo tempo.
+#
+# Não é sobre vazão. O Streamlit atende cada sessão numa thread do mesmo
+# processo, e a busca é Python com chamadas curtas de numpy: com um GIL só, as
+# threads já se revezavam no processador. O que elas faziam era se revezar
+# SEGURANDO MEMÓRIA cada uma — os temporários de `Motor.entropias` (a tabela de
+# baldes e o buffer de log, dezenas de MB para conjuntos de algumas centenas de
+# candidatas) ficam vivos enquanto a thread está suspensa no meio da varredura.
+#
+# Medido neste processo, com N sessões pedindo jogadas de estados DISTINTOS ao
+# mesmo tempo (o pior caso: nenhuma delas acerta o cache). RSS de 71 MB com um
+# motor carregado; o pico é o do processo inteiro:
+#
+#     N            8         16         32
+#     sem fila   249 MB    309 MB    386 MB     parede 2,65s  4,02s  9,02s
+#     4 vagas    202 MB    198 MB    211 MB     parede 2,51s  4,02s  8,65s
+#
+# Sem fila o pico cresce com a carga; com fila ele PARA de crescer, que é a
+# propriedade que interessa numa página aberta ao público — o custo deixa de
+# depender de quanta gente chega junto. E a parede é a mesma, dentro do ruído:
+# nada foi perdido em vazão porque nada estava rodando em paralelo. O que muda é
+# a latência mediana de cada sessão (2,2s -> 3,6s em N=32), que é a fila
+# aparecendo: menos gente calculando ao mesmo tempo, cada uma esperando mais.
+# Numa tela que já mostra "procurando a melhor jogada..." isso é o câmbio certo.
+#
+# 4 e não 2 ou 8 porque é onde a curva já está achatada: de 4 para 8 o pico
+# quase não cai mais, e abaixo de 4 a fila começa a aparecer na mediana sem ter
+# memória nenhuma a economizar em troca.
+VAGAS_DE_BUSCA = threading.Semaphore(4)
+
+
 # `cache_resource` e não `cache_data`: o `cache_data` guarda o valor por pickle, e
 # a `Sugestao` que sai daqui vem de um motor guardado em `cache_resource`, que
 # sobrevive aos reruns. Quando o Streamlit recarrega os módulos locais (o que a
@@ -338,9 +370,19 @@ def sugerir(chave: tuple, historico: tuple[tuple[str, str], ...]) -> Sugestao:
         # primeira jogada, e ela não muda quando se mexe na barra lateral.
         return motor.abertura_padrao()
     candidatas, _ = reconstruir(chave, historico)
-    return motor.escolher_com_teto(
-        candidatas, len(historico) + 1, teto=TETO_INTERATIVO
-    )
+    # A fila (`VAGAS_DE_BUSCA`) fica DENTRO do corpo da função e depois de
+    # `reconstruir`, e as duas coisas são de propósito. Dentro do corpo porque
+    # este é um `cache_resource`: um acerto de cache não entra aqui, então quem
+    # já tem resposta pronta não pega fila. Depois de `reconstruir` porque a
+    # refiltragem é barata e cacheada — só a busca precisa de vaga.
+    #
+    # Segurar a vaga não pode esperar por mais nada: `motor` já veio resolvido
+    # acima, e daqui para baixo é conta pura, sem outro cache no caminho. É o que
+    # garante que a fila não entre num ciclo com os locks por chave do Streamlit.
+    with VAGAS_DE_BUSCA:
+        return motor.escolher_com_teto(
+            candidatas, len(historico) + 1, teto=TETO_INTERATIVO
+        )
 
 
 # O docstring do módulo diz que refiltrar a cada rerun custa microssegundos, e
