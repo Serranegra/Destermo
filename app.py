@@ -477,7 +477,7 @@ venceu = bool(historico) and historico[-1][1] == PADRAO_VITORIA
 acabou = venceu or len(historico) >= N_MAX_TENTATIVAS
 
 # A abertura do nível 3 só vem pronta na configuração versionada. Fora dela são
-# ~16 min de busca na árvore — inaceitável numa aba de navegador, então avisamos
+# ~9 min de busca na árvore — inaceitável numa aba de navegador, então avisamos
 # em vez de pendurar a sessão.
 if (
     isinstance(motor, MotorNivel3)
@@ -490,7 +490,7 @@ if (
     st.error(
         f"A abertura do nível 3 para esta configuração (T = {bruto}"
         + (", espaço ampliado" if ampliado else "")
-        + ") não está em cache: são ~16 min de busca na árvore, uma vez só. "
+        + ") não está em cache: são ~9 min de busca na árvore, uma vez só. "
         f"Rode `{comando}` no terminal para calculá-la (o resultado vai para "
         "`data/aberturas_nivel3.json` e vale para sempre), ou use o nível 2 aqui "
         "do lado."

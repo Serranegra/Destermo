@@ -5,16 +5,22 @@
 <h1 align="center">Destermo</h1>
 <p align="center"><i>O palpite ótimo do Termo.</i></p>
 
-Solver de [Termo](https://term.ooo) escrito em Python. Duas frentes, como manda a
-[especificação v1.1](docs/ESPECIFICACAO_v1.1.md): uma **ferramenta** — CLI que
-sugere a próxima palavra — e uma **análise** — benchmark que mede quanto cada
-ideia do algoritmo realmente vale, em tentativas. A
+Solver de [Termo](https://term.ooo) escrito em Python. Você joga, diz a ele as
+cores que o jogo devolveu, e ele responde qual palavra jogar em seguida.
+
+O solver **nunca conhece a palavra secreta**. A cada rodada ele guarda as
+palavras do léxico ainda compatíveis com todo o feedback recebido e escolhe a
+jogada que minimiza quantas tentativas ainda faltam. No benchmark isso vence
+todas as partidas, com média de 2,85 tentativas no nível 3 e 3,58 no nível 2.
+
+O repositório tem duas frentes. Uma **ferramenta**, que sugere a próxima palavra
+enquanto se joga: um app web ([`app.py`](app.py)) e uma CLI
+([`solver.py`](solver.py)). E uma **análise**, que mede em tentativas o quanto
+cada ideia do algoritmo vale de fato ([`benchmark.py`](benchmark.py) e os
+[resultados](#resultados)). A divisão sai da
+[especificação v1.1](docs/ESPECIFICACAO_v1.1.md); a
 [v1.0](docs/ESPECIFICACAO_v1.0.md) fica no histórico porque os resultados das
 duas são comparados aqui embaixo.
-
-O solver **nunca conhece a palavra secreta**. Ele mantém o conjunto de palavras
-ainda compatíveis com todo o feedback recebido e escolhe a jogada que minimiza
-quantas tentativas ainda faltam.
 
 ---
 
@@ -159,7 +165,8 @@ onde são 1.500 partidas por estratégia e o custo pesa.
 
 ## Instalação
 
-Python 3.10+ com `numpy`. Para os gráficos, `matplotlib`. Para os testes, `pytest`.
+Python 3.10+ com `numpy`. Para o app web, `streamlit`. Para os gráficos,
+`matplotlib`. Para os testes, `pytest`.
 
 ```bash
 pip install -r requirements.txt
@@ -171,6 +178,26 @@ primeira execução e a matriz de padrões se reconstrói em ~4 s. Basta clonar 
 rodar.
 
 ## Uso
+
+### No navegador
+
+```bash
+streamlit run app.py
+```
+
+O tabuleiro é a entrada. A palavra sugerida já aparece em fantasma na linha
+ativa, e cada casa é um botão que cicla pelas cores do jogo a cada clique:
+ausente, fora de lugar, no lugar. Marque o que o Termo devolveu e aperte
+**Registrar rodada**; a linha sobe para o tabuleiro e sai a sugestão seguinte.
+Para jogar outra palavra que não a sugerida, digite-a no campo abaixo do
+tabuleiro. Na barra lateral ficam o nível, a temperatura do prior e o espaço
+ampliado, todos trocáveis no meio da partida.
+
+O nível 3 só abre na hora se a abertura da configuração escolhida estiver em
+cache. Fora das versionadas são ~9 min de busca na árvore, então o app avisa e
+manda calculá-la pela CLI (veja [Opções](#opções)) em vez de pendurar a aba.
+
+### Na linha de comando
 
 ```bash
 python solver.py
@@ -301,8 +328,9 @@ python -m pytest tests -q
 
 ## Estrutura
 
-O motor é independente da interface: trocar a CLI por um bot, uma API ou uma
-página web não exige mexer em nada dentro de `termo/`.
+O motor é independente da interface. A CLI e o app web são duas camadas finas
+sobre o mesmo `termo/`, e nenhuma linha de lógica de solver mora fora dele: pôr o
+solver numa página não exigiu mexer em nada lá dentro.
 
 | Arquivo | Papel |
 |---|---|
@@ -314,6 +342,7 @@ página web não exige mexer em nada dentro de `termo/`.
 | `termo/robustez.py` | Número efetivo de palavras (M = 2^H) e minimax de arrependimento sobre a distribuição desconhecida |
 | `termo/estrategias.py` | As estratégias do benchmark |
 | `solver.py` | CLI interativa (só I/O) |
+| `app.py` | App web em Streamlit (só I/O): tabuleiro clicável e cores da marca |
 | `benchmark.py` | Simulação de partidas e métricas |
 | `analise.py` | Gráficos e tabela de resultados |
 

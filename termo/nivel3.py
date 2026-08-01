@@ -493,8 +493,8 @@ class MotorNivel3:
         resto — é a assinatura do próprio algoritmo (ver `assinatura_busca`).
 
         O espaço de tentativa entra pelo mesmo motivo, e só no modo ampliado: as
-        entradas já versionadas custaram 16 min cada e não podem ser invalidadas
-        por uma opção que ninguém pediu.
+        entradas já versionadas custaram 16 min cada, no custo da época, e não
+        podem ser invalidadas por uma opção que ninguém pediu.
         """
         sondas = (
             "" if self.motor.n_sondas == len(self.lexico)
@@ -527,8 +527,9 @@ class MotorNivel3:
         """Melhor primeira jogada pelo objetivo do nível 3.
 
         É de longe a conta mais cara do projeto: a raiz tem as 6.046 candidatas e
-        cada palpite do beam abre ~150 sub-árvores — 16 min de busca. Vai para o
-        disco em `data/aberturas_nivel3.json`, com a chave de `_chave_cache`.
+        cada palpite do beam abre ~150 sub-árvores — 9 min de busca (eram 16 antes
+        de `_entropias_poucas`). Vai para o disco em `data/aberturas_nivel3.json`,
+        com a chave de `_chave_cache`.
         """
         cache, guardada = self._abertura_guardada() if usar_cache else ({}, None)
         if guardada is not None:
