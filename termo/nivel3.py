@@ -565,6 +565,43 @@ class MotorNivel3:
             )
         return sugestao
 
+    def abertura_robusta(self, n_alternativas: int = 5) -> Sugestao:
+        """Abertura do nível 2, com a política do nível 3 da segunda jogada em diante.
+
+        `abertura` devolve a palavra que minimiza E[tentativas] **sob o prior de
+        T=1** (`tosar`). Esta devolve a de maior entropia (`tarso`), que é a mesma
+        que empata em primeiro no minimax de arrependimento sobre sete
+        distribuições de secreta — ver "Robustez da abertura" no README. As duas
+        diferem em 0,013 tentativa se o prior estiver certo, e `tosar` perde 0,04
+        se ele estiver errado; é essa assimetria que faz da robusta o padrão da
+        CLI, com a ótima atrás de `--abertura otima`.
+
+        Só a primeira jogada muda: da segunda em diante é `escolher`, igual. E não
+        recalcula nada — a palavra sai do cache do nível 2 e o E[tentativas] dela
+        sai da lista de alternativas da abertura do nível 3, que é justamente uma
+        tabela de E por abertura sob esta mesma política.
+        """
+        sugestao = self.motor.abertura(n_alternativas)
+        _, guardada = self._abertura_guardada()
+        if guardada is not None:
+            valores = {guardada["palavra"]: guardada["valor_esperado"]}
+            valores.update(
+                {palavra: valor for palavra, valor, _ in guardada["alternativas"]}
+            )
+            sugestao.valor_esperado = valores.get(sugestao.palavra)
+        esperado = (
+            "" if sugestao.valor_esperado is None
+            else f", E={sugestao.valor_esperado:.3f} tentativas"
+        )
+        # Sem citar "nível 3" na frase: ela também vai para a tela do app, que não
+        # expõe a numeração interna dos algoritmos (ver o cabeçalho de `app.py`).
+        sugestao.motivo = (
+            f"abertura de maior entropia ({sugestao.entropia:.3f} bits{esperado}) — "
+            "a que menos depende do prior estar certo; só a 1ª jogada sai deste "
+            "critério"
+        )
+        return sugestao
+
 
 def carregar_motor(
     temperatura: float = 1.0,

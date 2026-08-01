@@ -17,7 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import numpy as np
 import pytest
 
-from termo import nivel3
+from termo import entropia, nivel3
 from termo.entropia import Motor
 from termo.feedback import calcular_feedback, padrao_para_codigo
 from termo.lexico import Lexico, calcular_prior
@@ -372,6 +372,37 @@ def test_abertura_vai_e_volta_do_cache(palavras_mini, tmp_path, monkeypatch):
     # Outra configuração é outra chave: não herda a resposta da primeira.
     outro = MotorNivel3(Motor(lexico, matriz=matriz), beam=5, profundidade=2)
     assert not outro.abertura_em_cache()
+
+
+def test_abertura_robusta_e_a_do_nivel_2_com_o_e_do_nivel_3(
+    palavras_mini, tmp_path, monkeypatch
+):
+    """A abertura padrão da CLI: palavra do nível 2, valor esperado do nível 3.
+
+    As duas metades vêm de caches diferentes e nenhuma delas é recalculada — é o
+    que faz a opção custar segundos em vez dos ~9 min da busca na raiz.
+    """
+    monkeypatch.setattr(nivel3, "ARQ_ABERTURA", tmp_path / "aberturas_nivel3.json")
+    monkeypatch.setattr(entropia, "ARQ_ABERTURA", tmp_path / "aberturas.json")
+    lexico = _mini_lexico(palavras_mini, 1.0)
+    matriz = construir_matriz(palavras_mini, verboso=False)
+    motor = Motor(lexico, matriz=matriz)
+    motor3 = MotorNivel3(motor, beam=5, profundidade=1)
+
+    robusta = motor3.abertura_robusta()
+    assert robusta.palavra == motor.abertura().palavra
+    # Sem a abertura do nível 3 em cache não há de onde tirar o E, e a sugestão
+    # sai mesmo assim — só sem o número.
+    assert robusta.valor_esperado is None
+
+    otima = motor3.abertura()
+    robusta = motor3.abertura_robusta()
+    assert robusta.palavra == motor.abertura().palavra
+    esperados = {otima.palavra: otima.valor_esperado}
+    esperados.update({palavra: valor for palavra, valor, _ in otima.alternativas})
+    assert robusta.valor_esperado == esperados[robusta.palavra]
+    # E o E da ótima é, por definição, o menor dos dois.
+    assert otima.valor_esperado <= robusta.valor_esperado
 
 
 def test_escolha_com_cache_devolve_o_mesmo(motor, estado):

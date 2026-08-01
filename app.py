@@ -294,7 +294,14 @@ def sugerir(chave: tuple, historico: tuple[tuple[str, str], ...]) -> Sugestao:
     """
     motor = obter_motor(*chave)
     if not historico:
-        return motor.abertura()
+        # Mesma abertura que a CLI joga por padrão: a de maior entropia, e não a
+        # que o nível 3 acha ótima sob o prior (ver `abertura_robusta`). As duas
+        # telas do projeto não podem discordar da primeira palavra.
+        return (
+            motor.abertura_robusta()
+            if isinstance(motor, MotorNivel3)
+            else motor.abertura()
+        )
     candidatas, _ = reconstruir(motor, historico)
     return motor.escolher(candidatas, len(historico) + 1)
 
@@ -501,29 +508,11 @@ historico = tuple(estado.historico)
 venceu = bool(historico) and historico[-1][1] == PADRAO_VITORIA
 acabou = venceu or len(historico) >= N_MAX_TENTATIVAS
 
-# A primeira jogada deste resolvedor só vem pronta nas configurações versionadas.
-# Fora delas são ~9 min de busca na árvore — inaceitável numa aba de navegador,
-# então avisamos em vez de pendurar a sessão.
-#
-# O `--nivel 3` do comando é a única numeração que sobra na tela, e sobra porque
-# ali ela não explica nada: é literal a ser digitado no terminal, e trocá-lo por
-# um nome amigável daria um comando que não existe.
-if (
-    isinstance(motor, MotorNivel3)
-    and not historico
-    and not motor.abertura_em_cache()
-):
-    comando = f"python solver.py --nivel 3 --t {bruto}" + (
-        " --ampliado" if ampliado else ""
-    )
-    st.error(
-        f"A primeira jogada de **{RESOLVEDOR[3]}** com esta configuração (T = "
-        f"{bruto}" + (", espaço ampliado" if ampliado else "") + ") ainda não foi "
-        "calculada, e são ~9 min de busca, uma vez só. Rode `" + comando + "` no "
-        "terminal para calculá-la (o resultado fica guardado e vale para sempre), "
-        f"ou escolha **{RESOLVEDOR[2]}** aqui do lado, que responde na hora."
-    )
-    st.stop()
+# Não há mais o aviso de "~9 min de busca" na primeira jogada: ele existia porque
+# a abertura do nível 3 fora das configurações versionadas é uma busca na árvore a
+# partir das 6.046 candidatas, inaceitável numa aba de navegador. Como a abertura
+# agora é a do nível 2 (uma varredura de entropia, ~1 s), qualquer T responde na
+# hora, e a busca só entra da segunda jogada em diante, onde custa décimos.
 
 candidatas, trilha = reconstruir(motor, historico)
 

@@ -4,15 +4,22 @@
 Esta camada só faz entrada/saída. Toda a lógica vive em `termo/` — trocar a CLI
 por um bot, uma API ou uma página web não exige mexer no motor (seção 7.4).
 
-    python solver.py            # nível 3, T = 1.0
-    python solver.py --nivel 2  # só entropia: milissegundos por jogada
-    python solver.py --t 5      # outra temperatura do prior
-    python solver.py --t inf    # entropia pura, sem prior de frequência
-    python solver.py --ampliado # deixa sondar com conjugações (§2.5)
+    python solver.py                  # nível 3, T = 1.0, abertura robusta
+    python solver.py --nivel 2        # só entropia: milissegundos por jogada
+    python solver.py --abertura otima # abre pela ótima do nível 3 (`tosar`)
+    python solver.py --t 5            # outra temperatura do prior
+    python solver.py --t inf          # entropia pura, sem prior de frequência
+    python solver.py --ampliado       # deixa sondar com conjugações (§2.5)
 
 O padrão é o nível 3 (§4.1): ele minimiza o número esperado de tentativas em vez
-de maximizar bits, o que vale 0,54 tentativa na bateria realista. A abertura dele
-vem em cache; cada jogada custa décimos de segundo.
+de maximizar bits, o que vale 0,54 tentativa na bateria realista. Cada jogada
+custa décimos de segundo.
+
+A abertura é a exceção: por padrão a CLI abre pela palavra de maior entropia
+(`tarso`), não pela ótima do nível 3 (`tosar`). As duas diferem em 0,013 tentativa
+se o prior de T=1 estiver certo, e `tosar` perde 0,04 se ele estiver errado — a
+troca compra robustez barato. `--abertura otima` desfaz a escolha; da segunda
+jogada em diante nada muda.
 
 Os dois níveis expõem a mesma interface (`abertura`, `escolher`), então daqui para
 baixo nada sabe qual dos dois está respondendo.
@@ -171,20 +178,29 @@ def rotular(motor: Cerebro, tentativa: str) -> str:
     return motor.lexico.mostrar(indice) if indice is not None else tentativa
 
 
-def jogar(motor: Cerebro) -> None:
+def jogar(motor: Cerebro, abertura_robusta: bool = True) -> None:
     candidatas = motor.todas_candidatas()
     historico: list[np.ndarray] = []
 
-    if isinstance(motor, MotorNivel3) and not motor.abertura_em_cache():
-        # Só a configuração padrão vem com a abertura versionada. Como o nível 3
-        # agora é o padrão, quem mexe em --t/--beam/--profundidade cai aqui sem
-        # ter pedido nada de exótico — então a saída de emergência vem junto.
-        print("\nAbertura do nível 3 fora do cache para esta configuração:"
+    # A abertura do nível 3 pode ser a ótima sob o prior ou a robusta a ele; daqui
+    # em diante os dois caminhos são o mesmo motor, e `voltar` também passa por
+    # aqui ao desfazer a primeira rodada.
+    nivel3_robusto = isinstance(motor, MotorNivel3) and abertura_robusta
+    abertura = motor.abertura_robusta if nivel3_robusto else motor.abertura
+
+    if isinstance(motor, MotorNivel3) and not nivel3_robusto and (
+        not motor.abertura_em_cache()
+    ):
+        # Só a configuração padrão vem com a abertura versionada; quem mexe em
+        # --t/--beam/--profundidade cai aqui. A saída de emergência vem junto — e
+        # com a abertura padrão nem se chega neste ramo, que ela não busca nada.
+        print("\nAbertura ótima do nível 3 fora do cache para esta configuração:"
               "\nsão ~9 min de busca na árvore, uma vez só (o resultado vai para"
-              "\ndata/aberturas_nivel3.json). Para começar já, use --nivel 2.")
+              "\ndata/aberturas_nivel3.json). Para começar já, tire o"
+              "\n--abertura otima: a robusta sai do cache do nível 2.")
     else:
         print("\nCalculando a melhor abertura...")
-    print(formatar_sugestao(motor.abertura(), "melhor abertura"))
+    print(formatar_sugestao(abertura(), "melhor abertura"))
 
     rodada = 1
     while rodada <= N_MAX_TENTATIVAS:
@@ -200,7 +216,7 @@ def jogar(motor: Cerebro) -> None:
             print(f"\n  rodada desfeita — de volta à rodada {rodada}, "
                   f"{len(candidatas)} candidatas")
             sugestao = (
-                motor.abertura() if rodada == 1 else motor.escolher(candidatas, rodada)
+                abertura() if rodada == 1 else motor.escolher(candidatas, rodada)
             )
             print(formatar_sugestao(sugestao, "sugestão"))
             continue
@@ -240,6 +256,11 @@ def main() -> None:
         help="3 = minimiza tentativas esperadas (padrão); 2 = entropia pura",
     )
     analisador.add_argument(
+        "--abertura", choices=("robusta", "otima"), default="robusta",
+        help="nível 3: 'robusta' abre pela de maior entropia (padrão); 'otima' "
+             "abre pela que minimiza tentativas sob o prior",
+    )
+    analisador.add_argument(
         "--beam", type=int, default=BEAM,
         help=f"nível 3: palpites testados por nó (padrão {BEAM})",
     )
@@ -266,6 +287,7 @@ def main() -> None:
     print("Digite '?' a qualquer momento para ver os comandos.")
     busca = (
         f"   beam={argumentos.beam} profundidade={argumentos.profundidade}"
+        f"   abertura={argumentos.abertura}"
         if argumentos.nivel == 3
         else ""
     )
@@ -275,7 +297,7 @@ def main() -> None:
         else f"{len(lexico)} palavras"
     )
     print(f"léxico: {espaco}   T={temperatura}{busca}")
-    jogar(motor)
+    jogar(motor, argumentos.abertura == "robusta")
 
 
 if __name__ == "__main__":

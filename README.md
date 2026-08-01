@@ -193,9 +193,10 @@ Para jogar outra palavra que não a sugerida, digite-a no campo abaixo do
 tabuleiro. Na barra lateral ficam o nível, a temperatura do prior e o espaço
 ampliado, todos trocáveis no meio da partida.
 
-O nível 3 só abre na hora se a abertura da configuração escolhida estiver em
-cache. Fora das versionadas são ~9 min de busca na árvore, então o app avisa e
-manda calculá-la pela CLI (veja [Opções](#opções)) em vez de pendurar a aba.
+O app abre pela mesma palavra que a CLI (`tarso`, veja [Opções](#opções)) e por
+isso responde na hora em qualquer configuração: a abertura é uma varredura de
+entropia de ~1 s, não a busca na árvore de ~9 min que a abertura ótima do nível 3
+exige fora das configurações versionadas. Essa continua disponível no terminal.
 
 ### Na linha de comando
 
@@ -206,32 +207,39 @@ python solver.py
 ```
 Solver de Termo — nível 3: menor nº esperado de tentativas
 Digite '?' a qualquer momento para ver os comandos.
-léxico: 6046 palavras   T=1.0   beam=10 profundidade=1
+léxico: 6046 palavras   T=1.0   beam=10 profundidade=1   abertura=robusta
 
 Calculando a melhor abertura...
-  melhor abertura: tosar   (5.91 bits, E=3.01 tentativas, é candidata)
-  motivo: melhor abertura do nível 3 (em cache)
-  alternativas: tarso*, sertã*, terso*, tória*, tirão*   (* = também é candidata)
+  melhor abertura: tarso   (5.97 bits, E=3.02 tentativas, é candidata)
+  motivo: abertura de maior entropia (5.975 bits, E=3.022 tentativas) — a que
+          menos depende do prior estar certo; só a 1ª jogada sai deste critério
+  alternativas: tirão*, tória*, sertã*, teira*, tosar*   (* = também é candidata)
 
-[1] tentativa > tosar
-[?] feedback de 'tosar' > BBBBY
+[1] tentativa > tarso
+[?] feedback de 'tarso' > BBBBB
 
-  candidatas restantes: 145
-  sugestão: breve   (3.51 bits, E=2.02 tentativas, é candidata)
-  motivo: menor nº esperado de tentativas (E=2.017) entre os 11 melhores palpites
-          por entropia (145 candidatas, 5 rodadas, profundidade 1)
-  alternativas: crime*, greve*, livre*   (* = também é candidata)
+  candidatas restantes: 223
+  sugestão: filme   (3.53 bits, E=1.89 tentativas, é candidata)
+  motivo: menor nº esperado de tentativas (E=1.886) entre os 11 melhores palpites
+          por entropia (223 candidatas, 5 rodadas, profundidade 1)
+  alternativas: cline*, linde*, lince*   (* = também é candidata)
 
-[2] tentativa > breve
-[?] feedback de 'breve' > BYYYG
+[2] tentativa > filme
+[?] feedback de 'filme' > BBBYY
 
-  candidatas restantes: 3
-  sugestão: verde   (0.12 bits, E=1.02 tentativas, é candidata)
-  motivo: menor nº esperado de tentativas (E=1.017) entre os 11 melhores palpites
-          por entropia (3 candidatas, 4 rodadas, profundidade 1)
+  candidatas restantes: 12
+  sugestão: nuvem   (1.37 bits, E=1.41 tentativas, é candidata)
+  motivo: menor nº esperado de tentativas (E=1.414) entre os 11 melhores palpites
+          por entropia (12 candidatas, 4 rodadas, profundidade 1)
+  alternativas: bunda*, bundo*, jundu*   (* = também é candidata)
+
+[3] tentativa > nuvem
+[?] feedback de 'nuvem' > GGGGG
+
+  acertou 'nuvem' em 3 tentativa(s). Fim.
 ```
 
-6.046 → 145 → 3. Repare no `E` caindo junto: 3,01 → 2,02 → 1,02 tentativas ainda
+6.046 → 223 → 12. Repare no `E` caindo junto: 3,02 → 1,89 → 1,41 tentativas ainda
 esperadas. É o número que o nível 3 minimiza, mostrado a cada jogada.
 
 Digite as tentativas **sem acento** — é o que o jogador faz no term.ooo, que
@@ -249,6 +257,17 @@ segundo por jogada. Para o nível 2 puro — entropia, milissegundos por jogada:
 
 ```bash
 python solver.py --nivel 2
+```
+
+A abertura padrão é `tarso`, a de maior entropia, **não** a ótima do nível 3
+(`tosar`). O motivo está em [Robustez da
+abertura](#e-se-a-própria-distribuição-for-desconhecida): as duas diferem em 0,013
+tentativa se o prior de T=1 estiver certo, e `tosar` perde 0,04 se ele estiver
+errado — a troca compra robustez barato, e da segunda jogada em diante nada muda.
+Para abrir pela ótima sob o prior:
+
+```bash
+python solver.py --abertura otima
 ```
 
 Outras temperaturas do prior (`inf` desliga o prior e recupera a entropia pura):
@@ -274,11 +293,12 @@ padrões própria (~10 s). Não espere ganho:
 [a medição está abaixo](#ampliar-o-espaço-de-tentativa-não-paga) e deu zero no
 nível 2 — no nível 3 dá negativo, então lá a opção é contraindicada.
 
-**Atenção ao combinar `--t` com o nível 3.** Só a configuração padrão
-(`T=1, beam=10, profundidade=1`) vem com a abertura pronta em
+**Atenção ao combinar `--t` com `--abertura otima`.** Só a configuração padrão
+(`T=1, beam=10, profundidade=1`) vem com a abertura do nível 3 pronta em
 `data/aberturas_nivel3.json`; qualquer outra é uma busca a partir das 6.046
-candidatas e leva ~9 min, uma vez, antes da primeira sugestão. A CLI avisa e
-sugere `--nivel 2` para começar na hora. O tamanho da busca é ajustável por
+candidatas e leva ~9 min, uma vez, antes da primeira sugestão. A CLI avisa antes
+de gastar o tempo. A abertura padrão não passa por aí — ela sai do cache do nível
+2, que é uma varredura de segundos. O tamanho da busca é ajustável por
 `--beam` (palpites testados por nó) e `--profundidade` (níveis de busca antes de
 cair na política gulosa) — cada combinação tem a sua própria abertura em cache.
 
@@ -593,7 +613,7 @@ em algum cenário.
 | nível 2 — bits | **T=1 (padrão)** | **`tarso`** (5,975) |
 | nível 2 — bits | T=0,3 | `metro` |
 | nível 2 — bits | T=0,1 | `mesto` |
-| nível 3 — tentativas | **T=1 (padrão da CLI)** | **`tosar`** (E=3,009) |
+| nível 3 — tentativas | **T=1 (padrão do nível 3)** | **`tosar`** (E=3,009) |
 | nível 3 — tentativas | T→∞ | `tória` (E=3,825) |
 
 **Mundo aberto** — só as N mais comuns caem, mas o léxico inteiro é digitável:
@@ -684,9 +704,12 @@ a abertura do nível 2 é robusta** — o que é o resultado mais tranquilizador
 esta análise poderia dar: o solver já joga uma abertura que não depende do prior
 estar certo. `sertã` é a curiosidade, não a recomendação.
 
-Quem paga a conta é `tosar`, a abertura da CLI: 0,069, mais que o dobro, e o pior
-caso dela é justamente o mundo uniforme. É a ressalva do nível 3 vista de outro
-ângulo — ele otimiza *sob* o prior, então erra mais quando o prior erra.
+Quem paga a conta é `tosar`, a abertura ótima do nível 3: 0,069, mais que o
+dobro, e o pior caso dela é justamente o mundo uniforme. É a ressalva do nível 3
+vista de outro ângulo — ele otimiza *sob* o prior, então erra mais quando o prior
+erra. **É por isso que a CLI abre por `tarso` mesmo rodando o nível 3** (ver
+[Opções](#opções)): a política que decide as jogadas seguintes continua sendo a do
+nível 3, mas a primeira palavra sai do critério que não aposta no prior.
 
 **Quanto custa usar `tosar` com a distribuição errada?** No máximo 0,069
 tentativa. A discussão inteira desta seção cabe em sete centésimos de tentativa,
@@ -695,17 +718,21 @@ uma escolha defensável, e trocar de abertura não é onde estão os ganhos.
 
 Levada ao nível 3, `sertã` não constrói caso para virar padrão:
 
-| | `sertã` | `tosar` (padrão) |
+| | `sertã` | `tosar` (ótima do nível 3) |
 |---|---|---|
 | E na raiz, T=1 | 3,0249 | **3,0094** |
 | bateria realista 1.500 | **3,4580** | 3,4893 |
 | vitória | 99,93% | **100,0%** |
 
-Ela perde na métrica que a CLI otimiza, ganha 0,031 tentativa jogando, e troca
+Ela perde na métrica que o nível 3 otimiza, ganha 0,031 tentativa jogando, e troca
 isso por uma derrota em 1.500 partidas. Somando com o empate técnico acima: **não
-há motivo para mexer na abertura de nenhum dos dois níveis.** O que a análise
-entrega não é uma palavra nova, é a medida de quanto a escolha atual depende de
-uma premissa — e a resposta é "pouco, no nível 2; o dobro disso, no nível 3".
+há motivo para mexer na abertura de nenhum dos dois níveis** — cada um continua
+devolvendo o ótimo do seu próprio critério, e é isso que `abertura()` faz nos dois
+motores. O que muda é qual dos dois a CLI joga por padrão, que é uma decisão de
+produto e não de algoritmo: entre duas palavras separadas por 0,013 tentativa sob
+o prior, ela abre pela que não depende dele. O que a análise entrega não é uma
+palavra nova, é a medida de quanto a escolha depende de uma premissa — e a
+resposta é "pouco, no nível 2; o dobro disso, no nível 3".
 
 **Duas ressalvas que a tabela não carrega sozinha.** A primeira: minimax de
 arrependimento é refém do conjunto de mundos admitidos — um M implausível na
@@ -728,8 +755,8 @@ invalidado por assinatura do código) e a tabela vai para
 
 | se você… | jogue | por quê |
 |---|---|---|
-| não quer apostar em premissa nenhuma | **`tarso`** | menor arrependimento de pior caso sobre sete distribuições, de "lista curada" a uniforme (empatada com `sertã`) — e é a abertura do nível 2, então a CLI já a oferece com `--nivel 2` |
-| confia no prior do projeto | **`tosar`** | é o padrão da CLI: menor E[tentativas] com T=1 sobre o léxico inteiro. Custa até 0,069 tentativa se o prior estiver errado |
+| não quer apostar em premissa nenhuma | **`tarso`** | menor arrependimento de pior caso sobre sete distribuições, de "lista curada" a uniforme (empatada com `sertã`) — é a abertura do nível 2 e, por isso, o padrão da CLI |
+| confia no prior do projeto | **`tosar`** | menor E[tentativas] com T=1 sobre o léxico inteiro: é o ótimo do nível 3, atrás de `--abertura otima`. Ganha 0,013 tentativa se o prior estiver certo e custa até 0,069 se estiver errado |
 | acha que só palavras bem comuns caem, e mede em **bits** | **`serão`** | é o ótimo do mundo fechado de 200–300 — aqui os fóruns estão certos |
 | acha que só palavras bem comuns caem, e mede em **tentativas** | **`sorte`** (N≈300) ou **`certa`** (N≈500–1500) | ganhar cedo vale mais que informar muito |
 
@@ -993,10 +1020,12 @@ prior de T=1 estiver certo e o dobro de pior se não estiver; `serão` só é ó
 se a lista de respostas tiver ~300 palavras, e é a menos robusta das oito;
 `sertã` supera `tarso` por 0,0007 tentativa, que uma coluna da grade decide.
 
-Quem confia no prior do projeto joga `tosar`, que é o que a CLI sugere e o que
-minimiza E[tentativas] sob a premissa declarada. `tarso` é a escolha de quem
-prefere não apostar nela. A tabela de [Para escolher uma na
-prática](#para-escolher-uma-na-prática) abre os outros casos.
+É por isso que **`tarso` é a abertura que a CLI joga**, mesmo rodando o nível 3:
+entre duas palavras separadas por 0,013 tentativa sob o prior, ela abre pela que
+não depende dele estar certo. Quem confia no prior joga `tosar`, que minimiza
+E[tentativas] sob a premissa declarada, e pede por ela com `--abertura otima`. A
+tabela de [Para escolher uma na prática](#para-escolher-uma-na-prática) abre os
+outros casos.
 
 **A segunda parte da resposta é mais útil que a primeira: a abertura vale
 pouco.** O pior arrependimento entre as oito candidatas testadas é 0,069
@@ -1017,9 +1046,12 @@ a mesma bateria antes e depois da mudança.
 Uma ordem de grandeza separa as duas coisas. O debate dos fóruns — e boa parte
 das seções acima — é sobre a variável menos importante do jogo: o que decide
 partidas é a política da segunda jogada em diante, não a primeira. É também por
-isso que nada no solver mudou depois de tudo isto. `tarso` e `tosar` seguem sendo
-as aberturas dos níveis 2 e 3; o que se ganhou foi saber **quanto** essa escolha
-depende de uma premissa que ninguém pode verificar — e a resposta é: pouco.
+isso que quase nada no solver mudou depois de tudo isto: `tarso` e `tosar` seguem
+sendo as aberturas dos níveis 2 e 3, cada uma ótima no seu critério, e nenhuma
+linha da busca foi tocada. Mudou só qual delas a CLI digita primeiro — e essa
+decisão vale, no pior caso, 0,069 tentativa. O que se ganhou foi saber **quanto**
+a escolha depende de uma premissa que ninguém pode verificar — e a resposta é:
+pouco.
 
 ---
 
