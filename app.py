@@ -65,6 +65,20 @@ LIMPA = VAZIA * TAMANHO
 # motor não encurtaria a que está em cache — só invalidaria o cache das outras.
 N_ALTERNATIVAS = 3
 
+# "Nível 2" e "nível 3" são nomes DE DENTRO: numeram a ordem em que os algoritmos
+# foram escritos e o quanto cada um corrige o anterior. Isso interessa a quem lê o
+# README, não a quem só quer a próxima palavra — para essa pessoa, "3" não é maior
+# nem melhor que "2", é só um número sem referência. Aqui os dois aparecem pelo
+# que fazem, e o número não vaza para a tela em lugar nenhum.
+RESOLVEDOR = {3: "menor número de tentativas", 2: "maior ganho informacional"}
+
+# O motor assina o próprio nome no `motivo` da abertura ("melhor abertura do
+# nível 3 (em cache)"). Ele está certo em fazer isso: a CLI mostra o mesmo campo,
+# e lá o número é o da opção `--nivel`. Quem tira o número da frase é esta camada
+# de exibição, não o motor — inverter isso poria texto de interface dentro de
+# `termo/`, que é justamente o que este arquivo existe para não fazer.
+SEM_NIVEL = {f" do nível {n}": "" for n in RESOLVEDOR}
+
 MONO = "ui-monospace, 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace"
 
 
@@ -227,14 +241,14 @@ COMO_USAR = f"""
 <details class="dt-ajuda">
 <summary>como usar</summary>
 <ol>
-<li>Jogue no Termo a palavra do cartão verde. Para jogar outra, digite-a no campo
-e aperte <b>Usar esta palavra</b> — o tabuleiro passa a mostrá-la.</li>
-<li>Copie o resultado do Termo: clique em cada casa da linha ativa até ela ficar
-da cor certa —
+<li>Jogue no Termo a palavra sugerida no cartão verde. Se preferir usar outra
+palavra, digite-a no campo e aperte <b>Usar esta palavra</b>. O tabuleiro passa a
+mostrá-la.</li>
+<li>Copie o feedback do Termo: clique em cada casa da linha ativa até ela ficar
+da cor certa 
 <span class="dt-amostra" style="background:{XISTO}"></span>ausente,
 <span class="dt-amostra" style="background:{DOURADO}"></span>fora de lugar,
-<span class="dt-amostra" style="background:{VERDE}"></span>no lugar. Casa que você
-não clicar conta como ausente.</li>
+<span class="dt-amostra" style="background:{VERDE}"></span>no lugar.</li>
 <li>Aperte <b>Registrar rodada</b>. A linha sobe para o tabuleiro e sai a
 sugestão seguinte. Repita até acertar.</li>
 </ol>
@@ -356,12 +370,19 @@ def estilo_casas(cores: str, fantasma: bool) -> str:
     return "<style>" + "".join(regras) + "</style>"
 
 
+def sem_nivel(motivo: str) -> str:
+    """`motivo` do motor sem a numeração interna dos algoritmos."""
+    for de, para in SEM_NIVEL.items():
+        motivo = motivo.replace(de, para)
+    return motivo
+
+
 def cartao_html(sugestao: Sugestao, rotulo: str) -> str:
     chips = []
     if sugestao.entropia > 0:
         chips.append(f"{sugestao.entropia:.2f} bits")
     if sugestao.valor_esperado is not None:
-        chips.append(f"E = {sugestao.valor_esperado:.2f} tentativas")
+        chips.append(f"{sugestao.valor_esperado:.2f} tentativas esperadas")
     partes = [
         f'<div class="dt-rotulo">{html.escape(rotulo)}</div>',
         f'<div class="dt-palavra">{html.escape(sugestao.palavra)}</div>',
@@ -373,7 +394,7 @@ def cartao_html(sugestao: Sugestao, rotulo: str) -> str:
             else '<span class="dt-chip">só sonda</span>'
         )
         + "</div>",
-        f'<div class="dt-motivo">{html.escape(sugestao.motivo)}</div>',
+        f'<div class="dt-motivo">{html.escape(sem_nivel(sugestao.motivo))}</div>',
     ]
     if sugestao.alternativas:
         alternativas = ", ".join(
@@ -431,18 +452,21 @@ with st.sidebar:
     nivel = st.radio(
         "Tipo do resolvedor",
         (3, 2),
-        format_func=lambda n: (
-            "Menor número de tentativas" if n == 3 else "Maior ganho informacional"
-        ),
-        help="Minimizar tentativas vale 0,54 tentativa na bateria realista; "
-        "maximizar informação responde em milissegundos.",
+        format_func=lambda n: RESOLVEDOR[n].capitalize(),
+        help="O primeiro simula as rodadas seguintes antes de decidir e termina a "
+        "partida meia tentativa mais cedo, em média, custando décimos de segundo "
+        "por jogada. O segundo escolhe a palavra que mais separa as candidatas "
+        "entre si e responde na hora.",
     )
     bruto = st.select_slider(
         "Temperatura do prior (T)",
         options=["0.5", "1.0", "2.0", "5.0", "inf"],
         value="1.0",
-        help="T baixo confia na frequência das palavras; T = inf é entropia pura, "
-        "sem prior.",
+        help="Palavras comuns caem no Termo com mais frequência que palavras raras, "
+        "e o solver usa essa pista ao escolher entre candidatas parecidas. T diz o "
+        "quanto ele confia nela: 0.5 aposta pesado nas comuns, 1.0 é o equilíbrio "
+        "padrão, e inf desliga a pista e trata toda candidata como igualmente "
+        "provável.",
     )
     temperatura = math.inf if bruto == "inf" else float(bruto)
     ampliado = st.toggle(
@@ -466,7 +490,8 @@ espaco = (
     else f"{len(motor.lexico)} palavras"
 )
 st.html(
-    f'<p class="dt-sub">nível {nivel} · T = {bruto} · {html.escape(espaco)}</p>'
+    f'<p class="dt-sub">{RESOLVEDOR[nivel]} · T = {bruto} · '
+    f"{html.escape(espaco)}</p>"
 )
 # Acima do tabuleiro, e não depois: quem precisa da ajuda precisa ANTES de mexer
 # nas casas. Recolhida, cabe na mesma dobra que o cartão da sugestão.
@@ -476,9 +501,13 @@ historico = tuple(estado.historico)
 venceu = bool(historico) and historico[-1][1] == PADRAO_VITORIA
 acabou = venceu or len(historico) >= N_MAX_TENTATIVAS
 
-# A abertura do nível 3 só vem pronta na configuração versionada. Fora dela são
-# ~9 min de busca na árvore — inaceitável numa aba de navegador, então avisamos
-# em vez de pendurar a sessão.
+# A primeira jogada deste resolvedor só vem pronta nas configurações versionadas.
+# Fora delas são ~9 min de busca na árvore — inaceitável numa aba de navegador,
+# então avisamos em vez de pendurar a sessão.
+#
+# O `--nivel 3` do comando é a única numeração que sobra na tela, e sobra porque
+# ali ela não explica nada: é literal a ser digitado no terminal, e trocá-lo por
+# um nome amigável daria um comando que não existe.
 if (
     isinstance(motor, MotorNivel3)
     and not historico
@@ -488,12 +517,11 @@ if (
         " --ampliado" if ampliado else ""
     )
     st.error(
-        f"A abertura do nível 3 para esta configuração (T = {bruto}"
-        + (", espaço ampliado" if ampliado else "")
-        + ") não está em cache: são ~9 min de busca na árvore, uma vez só. "
-        f"Rode `{comando}` no terminal para calculá-la (o resultado vai para "
-        "`data/aberturas_nivel3.json` e vale para sempre), ou use o nível 2 aqui "
-        "do lado."
+        f"A primeira jogada de **{RESOLVEDOR[3]}** com esta configuração (T = "
+        f"{bruto}" + (", espaço ampliado" if ampliado else "") + ") ainda não foi "
+        "calculada, e são ~9 min de busca, uma vez só. Rode `" + comando + "` no "
+        "terminal para calculá-la (o resultado fica guardado e vale para sempre), "
+        f"ou escolha **{RESOLVEDOR[2]}** aqui do lado, que responde na hora."
     )
     st.stop()
 
