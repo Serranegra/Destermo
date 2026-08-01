@@ -8,5 +8,27 @@
 # partir dessa versão — com 1.45 o app sobe e quebra no primeiro rerun. O teto em
 # 2 é porque um major pode mexer em layout e tema, e uma página divulgada não
 # deve mudar de forma sozinha entre dois deploys.
-numpy>=1.24
+#
+# O teto do numpy é o mesmo argumento, e aqui ele pega mais fundo que layout. A
+# construção da matriz (`termo/matriz.py`) é aritmética de inteiro com dtype
+# escolhido a dedo — estoque de letras em int8, acumulador em int16 dimensionado
+# para caber 0..242, saída em uint8 — e um major do numpy é exatamente onde as
+# regras de promoção mudam (a 2.0 já trocou as dela, na NEP 50). Uma mudança
+# dessas não levanta erro: ela devolve outro número.
+#
+# Há oráculo para isso, e ele é bom: `test_motor` e `test_sondas` conferem a
+# matriz vetorizada célula a célula contra o `calcular_codigo` em Python puro.
+# Uma promoção trocada não passaria pela suíte. O que o pin protege é o outro
+# lado — a instância em produção, que não roda teste nenhum e cuja assinatura de
+# matriz em disco é sobre a LISTA DE PALAVRAS, não sobre quem fez a conta. Lá um
+# major novo entra por um redeploy que ninguém associou a isso, e o cache
+# gravado sob a regra antiga continua parecendo válido (§0.3).
+#
+# Ou seja: o pin não substitui o teste, ele decide QUANDO a mudança chega — numa
+# atualização deliberada, com a suíte na frente, em vez de num deploy de terça.
+#
+# O piso de 1.24 é herdado e não foi verificado; ele quase nunca decide nada,
+# porque um resolvedor pega a versão mais nova que couber. Medido de verdade
+# neste projeto: numpy 2.5.1 (a suíte de 107 testes passa nele).
+numpy>=1.24,<3
 streamlit>=1.46,<2
